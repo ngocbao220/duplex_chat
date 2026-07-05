@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "duplexchat-pipe"
+version = "0.1.0"
+description = "DuplexChat construction pipeline: podcast crawling, diarization, two-speaker separation, and dataset reconstruction"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests",
+    "feedparser",
+    "webdataset",
+    "tqdm",
+    "pyannote.audio",
+    "torch",
+    "torchaudio",
+    "torchcodec",
+    "diffusers",
+    "huggingface_hub",
+]
+
+[project.scripts]
+duplexchat-pipe = "duplexchat_pipe.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+# torch / torchaudio / torchcodec resolve from PyPI by default so `uv sync`
+# works on any machine. To pin a specific CUDA build, add a PyTorch wheel index
+# and route the three packages to it (see README "Selecting a CUDA build"), e.g.:
+#
+#   [[tool.uv.index]]
+#   name = "pytorch-cu130"
+#   url = "https://download.pytorch.org/whl/cu130"
+#   explicit = true
+#
+#   [tool.uv.sources]
+#   torch = [{ index = "pytorch-cu130" }]
+#   torchaudio = [{ index = "pytorch-cu130" }]
+#   torchcodec = [{ index = "pytorch-cu130" }]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

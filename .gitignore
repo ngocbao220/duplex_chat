@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+
+# Data / caches / model downloads (never commit audio or shards)
+data/
+*.tar
+*.tar.gz
+*.wav
+*.mp3
+*.sqlite
+
+# Cluster / job artifacts
+logs/
+*.o[0-9]*
+*.e[0-9]*
+core.*
+error.log
