@@ -149,7 +149,7 @@ def run_diarization(pipeline: "Pipeline", wav_path: Path, max_chunk_dur: float =
                         best_g_spk = g_spk
                         
                 # Ngưỡng cosine similarity
-                if best_sim > 0.55 and best_g_spk is not None:
+                if best_sim > 0.7 and best_g_spk is not None:
                     local_to_global[spk] = best_g_spk
                     global_speaker_embs[best_g_spk].append(local_emb)
                 else:
