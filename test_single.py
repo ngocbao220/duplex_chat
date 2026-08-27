@@ -1,20 +1,23 @@
 import sys
 import torch
 import torchaudio
+import subprocess
 from pathlib import Path
 
 from duplexchat_pipe.audio import load_wav_tensor
 from duplexchat_pipe.diarize import load_diarization_pipeline, run_diarization
 from duplexchat_pipe.separate import load_separation_models, run_separation
 
-# Patch torch.load to force map_location='cpu' for torch.export.load on Mac/CPU
-_original_load = torch.load
-def _patched_load(*args, **kwargs):
-    kwargs["map_location"] = "cpu"
-    return _original_load(*args, **kwargs)
-torch.load = _patched_load
+# Tự động tìm thiết bị (dùng GPU nếu có, ngược lại dùng CPU)
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-import subprocess
+# Chỉ patch torch.load ép về CPU nếu máy thực sự không có GPU (như Mac)
+if device == "cpu":
+    _original_load = torch.load
+    def _patched_load(*args, **kwargs):
+        kwargs["map_location"] = "cpu"
+        return _original_load(*args, **kwargs)
+    torch.load = _patched_load
 
 def test_single_audio(audio_path_str):
     audio_path = Path(audio_path_str)
@@ -33,10 +36,10 @@ def test_single_audio(audio_path_str):
 
     print("[1/4] Loading Models...")
     # Khởi tạo pipeline nhận diện giọng nói (Diarization)
-    diarize_pipeline = load_diarization_pipeline("pyannote/speaker-diarization-community-1", device="cpu")
+    diarize_pipeline = load_diarization_pipeline("pyannote/speaker-diarization-community-1", device=device)
     
     # Khởi tạo mô hình tách âm (Separation)
-    sep_models = load_separation_models(device="cpu", backend="dialoguesidon")
+    sep_models = load_separation_models(device=device, backend="dialoguesidon")
     
     print("[2/4] Running Diarization...")
     segments = run_diarization(diarize_pipeline, temp_wav)
