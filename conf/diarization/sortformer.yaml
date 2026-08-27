@@ -1,6 +1,6 @@
 enabled: true
-backend: pyannote
-model: pyannote/speaker-diarization-community-1
+backend: sortformer
+model: nvidia/diar_sortformer_4spk-v1
 device: auto
 dialogue_gap_seconds: 5.0
 dialogue_min_duration_seconds: 10.0

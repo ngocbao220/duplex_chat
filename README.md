@@ -138,6 +138,41 @@ uv run duplexchat-pipe run --output ./data/wds \
     --enable-diarization --enable-separation
 ```
 
+Supported diarization model aliases:
+
+- `sortformer` -> `nvidia/diar_sortformer_4spk-v1` (`--diarization-backend sortformer`)
+- `pyannote-3.1` -> `pyannote/speaker-diarization-3.1` (`--diarization-backend pyannote`)
+- `diarizen` -> `BUT-FIT/diarizen-wavlm-large-s80-md` (`--diarization-backend diarizen`)
+
+Supported two-speaker separation backends:
+
+- `dialoguesidon` -> `sarulab-speech/DialogueSidon`
+- `sepformer` -> `speechbrain/sepformer-wsj02mix`
+- `mossformer2` -> `alibabasglab/MossFormer2_SS_16K`
+
+Examples:
+
+```bash
+uv run duplexchat-pipe run --enable-diarization \
+    --diarization-backend sortformer --diarization-model sortformer
+
+uv run duplexchat-pipe run --enable-diarization --enable-separation \
+    --separation-backend sepformer --separation-model sepformer
+```
+
+Backend dependency stacks can conflict, so install only the profiles you need:
+
+```bash
+uv sync --extra diarization-pyannote --extra separation-dialoguesidon
+uv sync --extra diarization-sortformer
+uv sync --extra separation-sepformer
+uv pip install -r requirements/diarization-diarizen.txt
+uv pip install -r requirements/separation-mossformer2.txt
+```
+
+For Sortformer, `requirements/diarization-sortformer.txt` follows NVIDIA's
+NeMo-from-GitHub install path when the PyPI NeMo package is not sufficient.
+
 ### Architecture
 
 Four concurrent thread pools form a producer–consumer chain:
@@ -183,6 +218,13 @@ bash jobs/vi/run_end2end.sh source.target_hours=10
 
 # Use MossFormer2 instead of DialogueSidon
 bash jobs/vi/run_end2end.sh separation=mossformer2
+
+# Use Sortformer or DiariZen diarization
+bash jobs/vi/run_end2end.sh diarization=sortformer
+bash jobs/vi/run_end2end.sh diarization=diarizen
+
+# Use SepFormer instead of DialogueSidon
+bash jobs/vi/run_end2end.sh separation=sepformer
 
 # Auto device resolution is cuda -> cpu. Multi-GPU is opt-in:
 bash jobs/vi/run_end2end.sh \

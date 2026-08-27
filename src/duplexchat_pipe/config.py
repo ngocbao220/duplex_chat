@@ -27,6 +27,7 @@ class Config:
     mp3_bitrate_kbps: int = 128
     min_original_sample_rate: int = 16000
     min_original_bitrate: int = 32_000
+    diarization_backend: str = "auto"
     diarization_model: str = "pyannote/speaker-diarization-community-1"
     runtime_device: str = "auto"
     allow_cpu_fallback: bool = True

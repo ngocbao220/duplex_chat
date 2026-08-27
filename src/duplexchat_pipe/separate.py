@@ -9,8 +9,11 @@ import torchaudio.functional as F_audio
 from diffusers import DPMSolverMultistepScheduler
 from huggingface_hub import hf_hub_download
 
+from duplexchat_pipe.model_options import SEPARATION_MODELS, resolve_model_alias
+
 REPO_ID = "sarulab-speech/DialogueSidon"
 REPO_ID_MOSSFORMER2 = "alibabasglab/MossFormer2_SS_16K"
+REPO_ID_SEPFORMER = "speechbrain/sepformer-wsj02mix"
 MODEL_FILES = ["ssl_encoder.pt2", "diffusion_head.pt2", "vae_decoder.pt2", "metadata.json"]
 SAMPLE_RATE_IN = 16_000
 CHUNK_SECONDS = 30.0
@@ -26,12 +29,15 @@ def load_separation_models(
 ) -> dict:
     """Download and load a configured speech-separation backend."""
     backend_norm = backend.strip().lower()
+    model_id = resolve_model_alias(model_id, SEPARATION_MODELS)
     if backend_norm == "dialoguesidon":
         return _load_dialoguesidon_models(device, model_id)
+    if backend_norm == "sepformer":
+        return _load_sepformer_models(device, model_id)
     if backend_norm == "mossformer2":
         return _load_mossformer2_models(device, model_id)
     raise ValueError(
-        f"Unsupported separation backend '{backend}'. Use dialoguesidon or mossformer2."
+        f"Unsupported separation backend '{backend}'. Use dialoguesidon, sepformer, or mossformer2."
     )
 
 
@@ -123,6 +129,38 @@ def _load_mossformer2_models(device: str = "cuda", model_id: str | None = None) 
         "model": model,
         "sample_rate": SAMPLE_RATE_IN,
         "device": torch.device(resolved),
+    }
+    _cache[cache_key] = models
+    return models
+
+
+def _load_sepformer_models(device: str = "cuda", model_id: str | None = None) -> dict:
+    repo_id = model_id or REPO_ID_SEPFORMER
+    resolved = device if (device != "cuda" or torch.cuda.is_available()) else "cpu"
+    cache_key = ("sepformer", repo_id, resolved)
+    if cache_key in _cache:
+        return _cache[cache_key]
+
+    try:
+        from speechbrain.inference.separation import SepformerSeparation
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "SepFormer backend requires speechbrain. Install the sepformer "
+            "dependency profile before selecting separation.backend=sepformer."
+        ) from exc
+
+    torch_device = torch.device(resolved)
+    model = SepformerSeparation.from_hparams(
+        source=repo_id,
+        savedir=str(Path.home() / ".cache" / "speechbrain" / repo_id.replace("/", "_")),
+        run_opts={"device": str(torch_device)},
+    )
+    models = {
+        "backend": "sepformer",
+        "model_id": repo_id,
+        "model": model,
+        "sample_rate": SAMPLE_RATE_IN,
+        "device": torch_device,
     }
     _cache[cache_key] = models
     return models
@@ -282,6 +320,8 @@ def run_separation(
 
     Returns (spk0, spk1, out_sr) where each track is a (1, T) CPU float32 tensor.
     """
+    if models.get("backend") == "sepformer":
+        return _run_sepformer_separation(wav, sample_rate, models)
     if models.get("backend") == "mossformer2":
         return _run_mossformer2_separation(wav, sample_rate, models)
 
@@ -351,6 +391,29 @@ def run_separation(
     spk0 = separated[0:1].cpu()
     spk1 = separated[1:2].cpu()
     return spk0, spk1, out_sr
+
+
+def _run_sepformer_separation(
+    wav: torch.Tensor,
+    sample_rate: int,
+    models: dict,
+) -> tuple[torch.Tensor, torch.Tensor, int]:
+    if sample_rate != SAMPLE_RATE_IN:
+        wav = F_audio.resample(wav, sample_rate, SAMPLE_RATE_IN)
+    model = models["model"]
+    device = models["device"]
+    mixture = wav.to(device)
+    output = model.separate_batch(mixture)
+    separated = torch.as_tensor(output, dtype=torch.float32)
+    if separated.ndim == 3 and separated.shape[0] == 1 and separated.shape[-1] >= 2:
+        tracks = separated[0].transpose(0, 1)
+    elif separated.ndim == 3 and separated.shape[1] >= 2:
+        tracks = separated[0]
+    elif separated.ndim == 2 and separated.shape[0] >= 2:
+        tracks = separated
+    else:
+        raise RuntimeError(f"SepFormer returned unsupported shape {tuple(separated.shape)}")
+    return tracks[0:1].cpu(), tracks[1:2].cpu(), SAMPLE_RATE_IN
 
 
 def _run_mossformer2_separation(

@@ -1,6 +1,6 @@
 enabled: true
-backend: pyannote
-model: pyannote/speaker-diarization-community-1
+backend: diarizen
+model: BUT-FIT/diarizen-wavlm-large-s80-md
 device: auto
 dialogue_gap_seconds: 5.0
 dialogue_min_duration_seconds: 10.0

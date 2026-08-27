@@ -1,18 +1,71 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Any
 
 import torch
 from huggingface_hub import get_token
 
 from duplexchat_pipe.audio import load_wav_tensor
+from duplexchat_pipe.model_options import DIARIZATION_MODELS, infer_diarization_backend, resolve_model_alias
 
 if TYPE_CHECKING:
     from pyannote.audio import Pipeline
 
 
-def load_diarization_pipeline(model: str, device: str = "cuda") -> "Pipeline":
+class FileDiarizationAdapter:
+    backend: str
+
+    def diarize_file(self, wav_path: Path) -> list[dict]:
+        raise NotImplementedError
+
+
+class SortformerDiarizationAdapter(FileDiarizationAdapter):
+    backend = "sortformer"
+
+    def __init__(self, model: Any):
+        self.model = model
+
+    def diarize_file(self, wav_path: Path) -> list[dict]:
+        predicted = self.model.diarize(audio=str(wav_path), batch_size=1)
+        return _segments_from_sortformer_output(predicted)
+
+
+class DiariZenDiarizationAdapter(FileDiarizationAdapter):
+    backend = "diarizen"
+
+    def __init__(self, pipeline: Any):
+        self.pipeline = pipeline
+
+    def diarize_file(self, wav_path: Path) -> list[dict]:
+        output = self.pipeline(str(wav_path), sess_name=wav_path.stem)
+        return _segments_from_annotation(output)
+
+
+def load_diarization_pipeline(
+    model: str,
+    device: str = "cuda",
+    backend: str = "auto",
+) -> "Pipeline | FileDiarizationAdapter":
+    model = resolve_model_alias(model, DIARIZATION_MODELS) or model
+    backend_norm = backend.strip().lower()
+    if backend_norm == "auto":
+        backend_norm = infer_diarization_backend(model)
+    if backend_norm == "sortformer":
+        return _load_sortformer_pipeline(model, device)
+    if backend_norm == "diarizen":
+        return _load_diarizen_pipeline(model, device)
+    if backend_norm != "pyannote":
+        raise ValueError("Unsupported diarization backend '%s'. Use auto, pyannote, sortformer, or diarizen." % backend)
+    return _load_pyannote_pipeline(model, device)
+
+
+def _resolve_device(device: str) -> str:
+    return device if (device != "cuda" or torch.cuda.is_available()) else "cpu"
+
+
+def _load_pyannote_pipeline(model: str, device: str = "cuda") -> "Pipeline":
     token = get_token()
     if token is None:
         raise RuntimeError(
@@ -29,18 +82,114 @@ def load_diarization_pipeline(model: str, device: str = "cuda") -> "Pipeline":
     except TypeError:
         pipeline = Pipeline.from_pretrained(model, token=token)
 
-    resolved_device = device if (device != "cuda" or torch.cuda.is_available()) else "cpu"
+    resolved_device = _resolve_device(device)
     pipeline.to(torch.device(resolved_device))
     return pipeline
 
 
+def _load_sortformer_pipeline(model: str, device: str = "cuda") -> SortformerDiarizationAdapter:
+    try:
+        from nemo.collections.asr.models import SortformerEncLabelModel
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "Sortformer diarization requires NVIDIA NeMo. Install the sortformer "
+            "dependency profile before using nvidia/diar_sortformer_4spk-v1."
+        ) from exc
+
+    diar_model = SortformerEncLabelModel.from_pretrained(model)
+    if hasattr(diar_model, "eval"):
+        diar_model.eval()
+    resolved_device = _resolve_device(device)
+    if hasattr(diar_model, "to"):
+        diar_model.to(torch.device(resolved_device))
+    return SortformerDiarizationAdapter(diar_model)
+
+
+def _load_diarizen_pipeline(model: str, device: str = "cuda") -> DiariZenDiarizationAdapter:
+    try:
+        from diarizen.pipelines.inference import DiariZenPipeline
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "DiariZen diarization requires the BUTSpeechFIT/DiariZen package and "
+            "its pyannote-compatible environment. Install the diarizen profile in "
+            "a separate environment before using BUT-FIT/diarizen-wavlm-large-s80-md."
+        ) from exc
+
+    pipeline = DiariZenPipeline.from_pretrained(model)
+    resolved_device = _resolve_device(device)
+    if hasattr(pipeline, "to"):
+        pipeline.to(torch.device(resolved_device))
+    return DiariZenDiarizationAdapter(pipeline)
+
+
+def _segments_from_annotation(output: Any) -> list[dict]:
+    segments = []
+    diarization = output.speaker_diarization if hasattr(output, "speaker_diarization") else output
+    for turn, _, speaker in diarization.itertracks(yield_label=True):
+        segments.append(
+            {"speaker": str(speaker), "start": float(turn.start), "end": float(turn.end)}
+        )
+    segments.sort(key=lambda x: x["start"])
+    return segments
+
+
+def _segments_from_sortformer_output(output: Any) -> list[dict]:
+    if isinstance(output, (list, tuple)) and len(output) == 1 and isinstance(output[0], (list, tuple)):
+        output = output[0]
+    segments = []
+    for item in output:
+        parsed = _parse_sortformer_segment(item)
+        if parsed is not None:
+            segments.append(parsed)
+    segments.sort(key=lambda x: x["start"])
+    return segments
+
+
+def _parse_sortformer_segment(item: Any) -> dict | None:
+    if isinstance(item, dict):
+        start = item.get("start", item.get("begin", item.get("start_time")))
+        end = item.get("end", item.get("stop", item.get("end_time")))
+        speaker = item.get("speaker", item.get("label", item.get("speaker_id")))
+        if start is not None and end is not None and speaker is not None:
+            return {"speaker": str(speaker), "start": float(start), "end": float(end)}
+        return None
+    if isinstance(item, (list, tuple)) and len(item) >= 3:
+        return {"speaker": str(item[2]), "start": float(item[0]), "end": float(item[1])}
+    if isinstance(item, str):
+        parts = re.split(r"[\s,]+", item.strip())
+        numbers = []
+        speaker = None
+        for part in parts:
+            try:
+                numbers.append(float(part))
+            except ValueError:
+                if part:
+                    speaker = part
+        if len(numbers) >= 2:
+            if speaker is None and len(numbers) >= 3:
+                speaker = str(int(numbers[2]))
+            return {
+                "speaker": str(speaker or "SPEAKER_00"),
+                "start": numbers[0],
+                "end": numbers[1],
+            }
+    return None
+
+
 import numpy as np
 
-def run_diarization(pipeline: "Pipeline", wav_path: Path, max_chunk_dur: float = 60.0) -> list[dict]:
+def run_diarization(
+    pipeline: "Pipeline | FileDiarizationAdapter",
+    wav_path: Path,
+    max_chunk_dur: float = 60.0,
+) -> list[dict]:
     """
     Chạy diarization bằng cách dùng VAD để cắt audio thành các chunk <= max_chunk_dur,
     sau đó so sánh embedding để gán nhãn speaker globally (giúp tránh OOM).
     """
+    if isinstance(pipeline, FileDiarizationAdapter):
+        return pipeline.diarize_file(wav_path)
+
     waveform, sample_rate = load_wav_tensor(wav_path)
     dur_sec = waveform.shape[1] / sample_rate
     
@@ -97,14 +246,13 @@ def run_diarization(pipeline: "Pipeline", wav_path: Path, max_chunk_dur: float =
             continue
             
         local_segs = []
-        iterator = output.speaker_diarization if hasattr(output, "speaker_diarization") else output.itertracks(yield_label=True)
-        
-        for turn_data in iterator:
-            if hasattr(output, "speaker_diarization"):
-                turn, speaker = turn_data
-            else:
-                turn, _, speaker = turn_data
-                
+        iterator = (
+            output.speaker_diarization.itertracks(yield_label=True)
+            if hasattr(output, "speaker_diarization")
+            else output.itertracks(yield_label=True)
+        )
+
+        for turn, _, speaker in iterator:
             local_segs.append({
                 "speaker": str(speaker),
                 "start": float(turn.start),

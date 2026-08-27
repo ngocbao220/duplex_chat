@@ -58,6 +58,7 @@ FIELD_ALIASES = {
     "runtime.separation_workers": "separation_workers",
     "runtime.scratch_dir": "scratch_dir",
     "diarization.enabled": "enable_diarization",
+    "diarization.backend": "diarization_backend",
     "diarization.model": "diarization_model",
     "diarization.device": "diarization_device",
     "diarization.dialogue_gap_seconds": "dialogue_gap_seconds",

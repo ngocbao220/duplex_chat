@@ -1,0 +1,4 @@
+enabled: true
+backend: sepformer
+model: speechbrain/sepformer-wsj02mix
+num_steps: 0

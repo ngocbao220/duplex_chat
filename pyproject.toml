@@ -27,6 +27,14 @@ duplexchat-pipe = "duplexchat_pipe.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+diarization-pyannote = ["pyannote.audio>=3.1"]
+diarization-sortformer = [
+    "Cython",
+    "packaging",
+    "nemo_toolkit[asr]",
+]
+separation-dialoguesidon = ["diffusers", "huggingface_hub"]
+separation-sepformer = ["speechbrain"]
 
 # torch / torchaudio / torchcodec resolve from PyPI by default so `uv sync`
 # works on any machine. To pin a specific CUDA build, add a PyTorch wheel index

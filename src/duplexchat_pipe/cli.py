@@ -6,6 +6,7 @@ from pathlib import Path
 
 from duplexchat_pipe.config import Config
 from duplexchat_pipe.hydra_runner import main as hydra_main
+from duplexchat_pipe.model_options import DIARIZATION_MODELS, SEPARATION_MODELS
 from duplexchat_pipe.pipeline import crawl_and_build_dataset
 
 
@@ -44,6 +45,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Device for diarization model (default: auto = cuda then cpu).",
     )
+    run_parser.add_argument(
+        "--diarization-backend",
+        choices=["auto", "pyannote", "sortformer", "diarizen"],
+        default="auto",
+        help="Diarization backend (default: infer from model).",
+    )
+    run_parser.add_argument(
+        "--diarization-model",
+        default=None,
+        help=(
+            "Diarization model id or alias "
+            f"({', '.join(sorted(DIARIZATION_MODELS))})."
+        ),
+    )
     run_parser.add_argument("--runtime-device", default="auto", help="Global device policy (auto, cpu, cuda, cuda:N).")
     run_parser.add_argument("--no-cpu-fallback", action="store_true", help="Fail instead of falling back to CPU when CUDA is requested but unavailable.")
     run_parser.add_argument("--multi-gpu", action="store_true", help="Enable round-robin CUDA task assignment.")
@@ -55,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--separation-backend",
-        choices=["dialoguesidon", "mossformer2"],
+        choices=["dialoguesidon", "sepformer", "mossformer2"],
         default="dialoguesidon",
         help="Speech separation backend (default: dialoguesidon).",
     )
@@ -128,6 +143,9 @@ def main() -> None:
         cfg.scratch_dir = args.scratch_dir
         cfg.mp3_bitrate_kbps = args.mp3_bitrate_kbps
         cfg.enable_diarization = bool(args.enable_diarization)
+        cfg.diarization_backend = args.diarization_backend
+        if args.diarization_model:
+            cfg.diarization_model = DIARIZATION_MODELS.get(args.diarization_model, args.diarization_model)
         cfg.runtime_device = args.runtime_device
         cfg.allow_cpu_fallback = not args.no_cpu_fallback
         cfg.multi_gpu_enabled = bool(args.multi_gpu)
@@ -135,7 +153,7 @@ def main() -> None:
         cfg.diarization_device = args.diarization_device
         cfg.enable_separation = bool(args.enable_separation)
         cfg.separation_backend = args.separation_backend
-        cfg.separation_model = args.separation_model
+        cfg.separation_model = SEPARATION_MODELS.get(args.separation_model, args.separation_model)
         cfg.separation_num_steps = args.separation_num_steps
         cfg.dialogue_gap_seconds = args.dialogue_gap_seconds
         cfg.dialogue_max_single_speaker_ratio = args.dialogue_max_single_speaker_ratio

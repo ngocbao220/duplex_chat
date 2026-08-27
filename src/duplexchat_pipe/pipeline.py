@@ -642,7 +642,9 @@ def crawl_and_build_dataset(cfg: Config) -> None:
     diarize_lock = None
     separation_lock = None
     if cfg.enable_diarization:
-        diarization_pipeline = diarize.load_diarization_pipeline(cfg.diarization_model, cfg.diarization_device)
+        diarization_pipeline = diarize.load_diarization_pipeline(
+            cfg.diarization_model, cfg.diarization_device, cfg.diarization_backend
+        )
         diarize_lock = threading.Lock()
     if cfg.enable_separation and cfg.enable_diarization:
         separation_models = separate_mod.load_separation_models(
