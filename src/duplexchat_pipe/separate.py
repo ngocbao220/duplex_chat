@@ -206,8 +206,10 @@ def _denormalize(latents: torch.Tensor, models: dict) -> torch.Tensor:
 def _channel_similarity(a: torch.Tensor, b: torch.Tensor) -> float:
     a, b = a.reshape(-1), b.reshape(-1)
     a, b = a - a.mean(), b - b.mean()
-    denom = torch.linalg.norm(a) * torch.linalg.norm(b)
-    return float(torch.dot(a, b) / denom) if float(denom) > 1e-8 else 0.0
+    # Dùng Dot Product (không chia cho mẫu số) để ưu tiên các đoạn có giọng nói lớn (energy cao).
+    # Nếu chia cho norm (Pearson correlation), các đoạn im lặng (chỉ có nhiễu noise) 
+    # sẽ bị phóng đại và làm đảo lộn logic ghép kênh (swap).
+    return float(torch.dot(a, b))
 
 
 def _maybe_swap(
