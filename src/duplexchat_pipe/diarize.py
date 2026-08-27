@@ -36,7 +36,7 @@ def load_diarization_pipeline(model: str, device: str = "cuda") -> "Pipeline":
 
 import numpy as np
 
-def run_diarization(pipeline: "Pipeline", wav_path: Path, max_chunk_dur: float = 180.0) -> list[dict]:
+def run_diarization(pipeline: "Pipeline", wav_path: Path, max_chunk_dur: float = 60.0) -> list[dict]:
     """
     Chạy diarization bằng cách dùng VAD để cắt audio thành các chunk <= max_chunk_dur,
     sau đó so sánh embedding để gán nhãn speaker globally (giúp tránh OOM).
@@ -170,6 +170,9 @@ def run_diarization(pipeline: "Pipeline", wav_path: Path, max_chunk_dur: float =
                 "start": s["start"] + s_pad,
                 "end": s["end"] + s_pad,
             })
+            
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
             
     all_segments.sort(key=lambda x: x["start"])
     return all_segments

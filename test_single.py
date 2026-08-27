@@ -50,6 +50,11 @@ def test_single_audio(audio_path_str):
         print("  ...")
     
     print("[3/4] Running Separation...")
+    # Giải phóng VRAM của Diarization để nhường chỗ cho Separation
+    if device == "cuda":
+        diarize_pipeline.to(torch.device("cpu"))
+        torch.cuda.empty_cache()
+        
     wav, sr = load_wav_tensor(temp_wav)
     spk0, spk1, out_sr = run_separation(wav, sr, num_steps=30, models=sep_models)
     
