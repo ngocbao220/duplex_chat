@@ -273,6 +273,8 @@ def run_separation(
     sample_rate: int,
     num_steps: int,
     models: dict,
+    chunk_seconds: float = 30.0,
+    overlap_seconds: float = 5.0,
 ) -> tuple[torch.Tensor, torch.Tensor, int]:
     """Separate a (1, T) mono waveform into two speaker tracks.
 
@@ -288,7 +290,7 @@ def run_separation(
         wav = F_audio.resample(wav, sample_rate, SAMPLE_RATE_IN)
     wav = wav.to(device)
 
-    chunk_samples = int(CHUNK_SECONDS * SAMPLE_RATE_IN)
+    chunk_samples = int(chunk_seconds * SAMPLE_RATE_IN)
     total_samples = wav.shape[-1]
 
     if total_samples <= chunk_samples:
@@ -296,7 +298,7 @@ def run_separation(
         wav_norm = torch.nn.functional.pad(0.9 * wav / max_val, (160, 160))
         separated = _separate_chunk(wav_norm, num_steps, models)
     else:
-        overlap_samples_in = int(OVERLAP_SECONDS * SAMPLE_RATE_IN)
+        overlap_samples_in = int(overlap_seconds * SAMPLE_RATE_IN)
         hop_samples = chunk_samples - overlap_samples_in
         starts = list(range(0, total_samples, hop_samples))
         stitched: torch.Tensor | None = None
