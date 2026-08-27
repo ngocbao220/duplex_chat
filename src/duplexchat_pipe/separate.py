@@ -13,8 +13,8 @@ REPO_ID = "sarulab-speech/DialogueSidon"
 REPO_ID_MOSSFORMER2 = "alibabasglab/MossFormer2_SS_16K"
 MODEL_FILES = ["ssl_encoder.pt2", "diffusion_head.pt2", "vae_decoder.pt2", "metadata.json"]
 SAMPLE_RATE_IN = 16_000
-CHUNK_SECONDS = 120.0
-OVERLAP_SECONDS = 10.0
+CHUNK_SECONDS = 30.0
+OVERLAP_SECONDS = 5.0
 
 _cache: dict = {}
 
@@ -338,6 +338,9 @@ def run_separation(
             else:
                 stitched = torch.cat([stitched, pred], dim=-1)
             prev_end_in = end
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         separated = stitched  # type: ignore[assignment]
 
