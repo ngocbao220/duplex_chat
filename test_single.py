@@ -59,11 +59,16 @@ def test_single_audio(audio_path_str):
     spk0, spk1, out_sr = run_separation(wav, sr, num_steps=30, models=sep_models)
     
     print("[4/4] Saving output...")
-    # Gộp 2 kênh thành file stereo (Left: Người A, Right: Người B)
-    stereo = torch.cat([spk0, spk1], dim=0)
-    output_path = "output_test_separated.wav"
-    torchaudio.save(output_path, stereo, out_sr)
-    print(f"Done! Saved separated stereo file to: {output_path}")
+    # Lưu kết quả thành 2 file riêng biệt cho 2 người nói
+    out_A = "output_speaker_A.wav"
+    out_B = "output_speaker_B.wav"
+    
+    torchaudio.save(out_A, spk0, out_sr)
+    torchaudio.save(out_B, spk1, out_sr)
+    
+    print(f"Done! Saved to:")
+    print(f" - {out_A} (Người A)")
+    print(f" - {out_B} (Người B)")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
