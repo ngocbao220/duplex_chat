@@ -14,6 +14,8 @@ MUSIC_KEYWORDS: tuple[str, ...] = (
     "reggae", "blues", "country", "metal", "folk", "r&b", "rnb",
     "soul", "punk", "indie", "alternative", "opera",
     "音楽", "楽曲", "ソング", "歌",
+    "nhạc", "bài hát", "ca nhạc", "acoustic", "karaoke",
+    "remix", "live session", "bolero", "vpop",
 )
 
 

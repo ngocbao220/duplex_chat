@@ -1,0 +1,2 @@
+# Add one JSON object per public Vietnamese RSS feed.
+# {"source_id":"vietcetera","source_type":"rss","url":"https://example.com/rss","language":"vi","show_name":"Vietcetera","license_notes":"public RSS, audit before release","priority":10}

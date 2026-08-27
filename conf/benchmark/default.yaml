@@ -1,0 +1,5 @@
+enabled: false
+vad_backend: silero
+asr_model: vinai/PhoWhisper-large
+speaker_embedding_model: speechbrain/spkrec-ecapa-voxceleb
+backchannel_terms: ["dạ", "vâng", "ừ", "ờ", "ừm", "đúng rồi", "vậy hả", "thế à"]

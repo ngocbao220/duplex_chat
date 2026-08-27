@@ -17,7 +17,26 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 import torch
 from tqdm import tqdm
 
-from duplexchat_pipe import audio, db, dialogue as dialogue_mod, diarize, rss, separate as separate_mod, tags as tag_filter, wds
+from duplexchat_pipe import (
+    audio,
+    db,
+    dialogue as dialogue_mod,
+    diarize,
+    rss,
+    separate as separate_mod,
+    sources,
+    tags as tag_filter,
+    wds,
+)
+from duplexchat_pipe.devices import pick_task_device, resolve_device, validate_multi_gpu
+from duplexchat_pipe.logging_utils import (
+    append_error,
+    append_phase_tree,
+    append_stats_table,
+    setup_run_logging,
+    write_artifacts,
+    write_resolved_config,
+)
 
 REPO_ID_SIDON = "sarulab-speech/DialogueSidon"
 from duplexchat_pipe.config import Config
@@ -59,6 +78,8 @@ class DownloadedItem:
     key: str
     raw_path: Path
     duration: float
+    sample_rate: int | None = None
+    bit_rate: int | None = None
 
 
 @dataclass
@@ -73,6 +94,7 @@ class SeparationTask:
     item: AudioItem
     episode_duration: float
     cfg: Config
+    device: str
 
 
 @dataclass
@@ -124,7 +146,12 @@ class ProcessedDB:
 
     def is_done(self, url_hash: str) -> bool:
         status = self.get_status(url_hash)
-        return status in {"ok", "skipped_duration", "skipped_no_dialogues"}
+        return status in {
+            "ok",
+            "skipped_duration",
+            "skipped_no_dialogues",
+            "skipped_low_quality",
+        }
 
     def mark(self, url_hash: str, status: str, error: str | None = None) -> None:
         updated_at = dt.datetime.utcnow().isoformat()
@@ -223,7 +250,8 @@ def _download_audio_item(
         t0 = time.monotonic()
         audio.download_audio(item.audio_url, raw_path, cfg.timeout_seconds)
         t_download = time.monotonic() - t0
-        duration = audio.probe_duration_seconds(raw_path)
+        info = audio.probe_audio_info(raw_path)
+        duration = info.duration
         LOGGER.info("PROFILE download %s %.2fs (%.1fs audio)", key, t_download, duration)
         if duration <= 0:
             return ProcessedResult(
@@ -237,7 +265,24 @@ def _download_audio_item(
                 diarization=None, diarization_error=None,
                 error=f"duration {duration:.2f}s exceeds limit", raw_path=raw_path,
             )
-        return DownloadedItem(item=item, key=key, raw_path=raw_path, duration=duration)
+        if info.sample_rate is not None and info.sample_rate < cfg.min_original_sample_rate:
+            return ProcessedResult(
+                key=key, status="skipped_low_quality", meta=None, audio_bytes=None,
+                diarization=None, diarization_error=None,
+                error=f"sample_rate {info.sample_rate} below {cfg.min_original_sample_rate}",
+                raw_path=raw_path,
+            )
+        if info.bit_rate is not None and info.bit_rate < cfg.min_original_bitrate:
+            return ProcessedResult(
+                key=key, status="skipped_low_quality", meta=None, audio_bytes=None,
+                diarization=None, diarization_error=None,
+                error=f"bit_rate {info.bit_rate} below {cfg.min_original_bitrate}",
+                raw_path=raw_path,
+            )
+        return DownloadedItem(
+            item=item, key=key, raw_path=raw_path, duration=duration,
+            sample_rate=info.sample_rate, bit_rate=info.bit_rate,
+        )
     except Exception as exc:  # noqa: BLE001
         return ProcessedResult(
             key=key, status="error", meta=None, audio_bytes=None,
@@ -259,6 +304,7 @@ def _diarize_episode(
     cfg: Config,
     diarization_pipeline,
     diarize_lock: threading.Lock | None,
+    task_device_ids: list[int] | None = None,
 ) -> DiarizeResult:
     """Transcode → diarize → extract dialogues → load WAV tensor. No separation."""
     key = downloaded.key
@@ -321,6 +367,9 @@ def _diarize_episode(
 
             for idx, dlg in enumerate(valid_dialogues):
                 dlg_key = f"{key}_{idx:04d}"
+                task_device = pick_task_device(
+                    cfg.diarization_device, idx, task_device_ids or []
+                )
                 start_sample = int(dlg.start * 16_000)
                 end_sample = int(dlg.end * 16_000)
                 # Clone the slice so the full wav_tensor can be freed
@@ -329,6 +378,7 @@ def _diarize_episode(
                     dlg_key=dlg_key, episode_key=key,
                     dlg_wav=dlg_wav, dlg_start=dlg.start, dlg_end=dlg.end,
                     dialogue=dlg, item=item, episode_duration=duration, cfg=cfg,
+                    device=task_device,
                 ))
             # Release the full wav tensor now that dialogue slices are copied
             del wav_tensor
@@ -411,15 +461,20 @@ def _separate_dialogue(
     cfg = task.cfg
     dlg = task.dialogue
     try:
+        models_for_task = separation_models
+        if str(separation_models.get("device")) != task.device:
+            models_for_task = separate_mod.load_separation_models(
+                task.device, cfg.separation_backend, cfg.separation_model
+            )
         t0 = time.monotonic()
         if separation_lock is None:
             spk0, spk1, sep_sr = separate_mod.run_separation(
-                task.dlg_wav, 16_000, cfg.separation_num_steps, separation_models
+                task.dlg_wav, 16_000, cfg.separation_num_steps, models_for_task
             )
         else:
             with separation_lock:
                 spk0, spk1, sep_sr = separate_mod.run_separation(
-                    task.dlg_wav, 16_000, cfg.separation_num_steps, separation_models
+                    task.dlg_wav, 16_000, cfg.separation_num_steps, models_for_task
                 )
         t_sep = time.monotonic() - t0
 
@@ -430,15 +485,18 @@ def _separate_dialogue(
         t_enc = time.monotonic() - t0
 
         LOGGER.info(
-            "PROFILE separation %s dur=%.1fs sep=%.2fs encode=%.2fs",
-            task.dlg_key, dlg.duration, t_sep, t_enc,
+            "PROFILE separation %s dur=%.1fs sep=%.2fs encode=%.2fs device=%s",
+            task.dlg_key, dlg.duration, t_sep, t_enc, task.device,
         )
 
         meta = _build_dialogue_meta(task.item, task.episode_duration, 0, dlg)
         meta["dialogue_idx"] = int(task.dlg_key.rsplit("_", 1)[-1])
         meta["separated"] = True
-        meta["separation_model"] = REPO_ID_SIDON
+        meta["separation_backend"] = cfg.separation_backend
+        meta["separation_model"] = models_for_task.get("model_id") or cfg.separation_model or REPO_ID_SIDON
         meta["separation_sample_rate"] = sep_sr
+        meta["device"] = task.device
+        meta["gpu_id"] = int(task.device.split(":", 1)[1]) if task.device.startswith("cuda:") else None
         meta["channels"] = 2
 
         diarization_data = {
@@ -507,6 +565,13 @@ def _iter_feed_urls(cfg: Config) -> list[tuple[str, str]]:
             continue
         seen.add(rss_url)
         feed_urls.append((rss_url, lang))
+    for record in sources.load_allowlist(cfg.feed_allowlist):
+        if record.source_type != "rss":
+            continue
+        if record.url in seen:
+            continue
+        seen.add(record.url)
+        feed_urls.append((record.url, record.language))
     return feed_urls
 
 
@@ -529,7 +594,26 @@ def _submit_feed_futures(
 # ── Main orchestration ───────────────────────────────────────────────────────
 
 def crawl_and_build_dataset(cfg: Config) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    cfg.runtime_device = resolve_device(cfg.runtime_device, cfg.allow_cpu_fallback)
+    if cfg.diarization_device in {"auto", "gpu"}:
+        cfg.diarization_device = cfg.runtime_device
+    gpu_ids = validate_multi_gpu(cfg.multi_gpu_enabled, cfg.multi_gpu_device_ids)
+    run_dir = setup_run_logging(cfg.log_root, cfg.run_id)
+    cfg.run_id = run_dir.name
+    cfg.run_dir = run_dir
+    write_resolved_config(run_dir, cfg)
+    append_phase_tree(
+        run_dir,
+        "end2end",
+        [
+            ("languages", ",".join(cfg.languages)),
+            ("diarization", f"{cfg.enable_diarization} {cfg.diarization_model}"),
+            ("separation", f"{cfg.enable_separation} {cfg.separation_backend}"),
+            ("device", cfg.diarization_device),
+            ("multi_gpu", ",".join(map(str, gpu_ids)) if gpu_ids else "disabled"),
+            ("target_hours", str(cfg.target_hours or "")),
+        ],
+    )
     audio.ensure_ffmpeg()
 
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
@@ -561,7 +645,9 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         diarization_pipeline = diarize.load_diarization_pipeline(cfg.diarization_model, cfg.diarization_device)
         diarize_lock = threading.Lock()
     if cfg.enable_separation and cfg.enable_diarization:
-        separation_models = separate_mod.load_separation_models(cfg.diarization_device)
+        separation_models = separate_mod.load_separation_models(
+            cfg.diarization_device, cfg.separation_backend, cfg.separation_model
+        )
         separation_lock = threading.Lock()
     elif cfg.enable_separation:
         LOGGER.warning("enable_separation requires enable_diarization; separation disabled.")
@@ -649,7 +735,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
 
             if cfg.enable_diarization and diarization_pipeline is not None:
                 diarize_future = diarize_pool.submit(
-                    _diarize_episode, result, cfg, diarization_pipeline, diarize_lock,
+                    _diarize_episode, result, cfg, diarization_pipeline, diarize_lock, gpu_ids,
                 )
                 pending_diarize.add(diarize_future)
             else:
@@ -667,6 +753,9 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         audio_pbar = tqdm(desc="audio", unit="item")
 
         while feed_futures:
+            if cfg.target_hours is not None and stats.total_duration_sec / 3600 >= cfg.target_hours:
+                LOGGER.info("target_hours %.2f reached; stopping feed submission", cfg.target_hours)
+                break
             done_feeds, _ = wait(set(feed_futures), return_when=FIRST_COMPLETED)
             for future in done_feeds:
                 feed_pbar.update(1)
@@ -709,6 +798,9 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                 _drain_diarizations()
             if pending_separate:
                 _drain_separations()
+            if cfg.target_hours is not None and stats.total_duration_sec / 3600 >= cfg.target_hours:
+                LOGGER.info("target_hours %.2f reached; cancelling remaining work", cfg.target_hours)
+                break
     except KeyboardInterrupt:
         interrupted = True
         LOGGER.warning("Keyboard interrupt received; shutting down.")
@@ -746,6 +838,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         }
         summary_path = cfg.output_dir / "summary.json"
         summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        append_stats_table(run_dir, "end2end", summary)
+        write_artifacts(run_dir, {"summary": str(summary_path), "output_dir": str(cfg.output_dir)})
 
 
 def _handle_processed_result(
@@ -777,11 +871,16 @@ def _handle_processed_result(
             duration_key = "dialogue_duration_sec" if "dialogue_idx" in result.meta else "duration_sec"
             stats.total_duration_sec += float(result.meta.get(duration_key, 0.0))
         stats.written += 1
-    elif result.status in {"skipped_duration", "skipped_no_dialogues"}:
+    elif result.status in {"skipped_duration", "skipped_no_dialogues", "skipped_low_quality"}:
         processed_db.mark(result.key, result.status, result.error)
         stats.skipped += 1
     else:
         LOGGER.warning("Error processing %s: %s", result.key, result.error)
+        if cfg.run_dir is not None:
+            append_error(
+                cfg.run_dir,
+                {"key": result.key, "status": result.status, "error": result.error},
+            )
         processed_db.mark(result.key, "error", result.error)
         stats.errors += 1
 

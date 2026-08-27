@@ -1,0 +1,2 @@
+# Add one JSON object per public Vietnamese YouTube podcast/talkshow source.
+# {"source_id":"have_a_sip_youtube","source_type":"youtube","url":"https://www.youtube.com/playlist?list=PLWrhnsc6Cvcrp7HmEWu8q0p95pRyGmpHi","language":"vi","show_name":"Have a Sip","license_notes":"public source, audio not redistributed","priority":10}

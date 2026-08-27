@@ -19,6 +19,7 @@ dependencies = [
     "torchcodec",
     "diffusers",
     "huggingface_hub",
+    "hydra-core",
 ]
 
 [project.scripts]

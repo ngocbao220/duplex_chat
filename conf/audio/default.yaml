@@ -1,0 +1,7 @@
+output_dir: data/wds_vi_poc
+cache_dir: data/cache_vi_poc
+sample_rate: 16000
+channels: 1
+mp3_bitrate_kbps: 128
+min_original_sample_rate: 16000
+min_original_bitrate: 32000

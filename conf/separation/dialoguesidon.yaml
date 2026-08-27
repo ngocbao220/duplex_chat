@@ -1,0 +1,4 @@
+enabled: true
+backend: dialoguesidon
+model: sarulab-speech/DialogueSidon
+num_steps: 30

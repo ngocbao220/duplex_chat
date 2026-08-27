@@ -1,0 +1,13 @@
+device: auto
+allow_cpu_fallback: true
+log_root: logs
+run_id: null
+rss_workers: 16
+download_workers: 4
+process_workers: 4
+separation_workers: 2
+scratch_dir: null
+multi_gpu:
+  enabled: false
+  device_ids: []
+  strategy: round_robin

@@ -14,3 +14,7 @@ def test_lang_matches():
     assert lang_matches("ja", allowed)
     assert lang_matches("ja-jp", allowed)
     assert not lang_matches("fr", allowed)
+
+
+def test_vietnamese_region_matches_base_language():
+    assert lang_matches("vi-vn", ["vi"])

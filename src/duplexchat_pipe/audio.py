@@ -4,6 +4,7 @@ import logging
 import shutil
 import subprocess
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,13 @@ DEFAULT_HEADERS = {
     ),
     "Accept": "*/*",
 }
+
+
+@dataclass(frozen=True)
+class AudioInfo:
+    duration: float
+    sample_rate: int | None
+    bit_rate: int | None
 
 
 def ensure_ffmpeg() -> None:
@@ -59,6 +67,46 @@ def probe_duration_seconds(path: Path) -> float:
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     output = result.stdout.strip()
     return float(output) if output else 0.0
+
+
+def probe_audio_info(path: Path) -> AudioInfo:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "format=duration,bit_rate:stream=sample_rate,bit_rate",
+        "-of",
+        "json",
+        str(path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    import json
+
+    data = json.loads(result.stdout or "{}")
+    fmt = data.get("format") or {}
+    streams = data.get("streams") or []
+    stream = streams[0] if streams else {}
+
+    def _to_float(value) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _to_int(value) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    return AudioInfo(
+        duration=_to_float(fmt.get("duration")),
+        sample_rate=_to_int(stream.get("sample_rate")),
+        bit_rate=_to_int(stream.get("bit_rate") or fmt.get("bit_rate")),
+    )
 
 
 def transcode_to_wav_16k_mono(in_path: Path, out_path: Path) -> Path:

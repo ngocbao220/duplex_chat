@@ -171,6 +171,31 @@ under `<cache-dir>/<node_index>/` so re-runs skip finished episodes.
 **`--num-nodes` must stay constant across re-runs** or the stride assignment
 (and thus dedup) breaks. See `jobs/crawl.sh`.
 
+### Vietnamese POC with Hydra
+
+The Vietnamese proof-of-concept config lives under `conf/` and targets 5-10
+hours by default. Hydra is the source of truth for these runs; bash scripts only
+forward overrides.
+
+```bash
+# End-to-end Vietnamese POC
+bash jobs/vi/run_end2end.sh source.target_hours=10
+
+# Use MossFormer2 instead of DialogueSidon
+bash jobs/vi/run_end2end.sh separation=mossformer2
+
+# Auto device resolution is cuda -> cpu. Multi-GPU is opt-in:
+bash jobs/vi/run_end2end.sh \
+    runtime.device=auto \
+    runtime.multi_gpu.enabled=true \
+    runtime.multi_gpu.device_ids='[0,1]'
+```
+
+Logs are written to `logs/YYYY-MM-DD/<run_id>/` with `run.log`,
+`resolved_config.yaml`, `phase_tree.txt`, `stats_table.md`, `errors.jsonl`, and
+`artifacts.json`. The same config can run individual phases through
+`jobs/vi/01_collect_sources.sh` ... `jobs/vi/06_benchmark.sh`.
+
 ### Post-processing: filter + dedup
 
 ```bash

@@ -1,0 +1,4 @@
+enabled: true
+backend: mossformer2
+model: alibabasglab/MossFormer2_SS_16K
+num_steps: 0
