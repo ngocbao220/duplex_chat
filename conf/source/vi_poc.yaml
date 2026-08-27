@@ -1,5 +1,5 @@
 languages: ["vi", "vi-vn"]
 feed_allowlist: sources/vi_allowlist.jsonl
 youtube_allowlist: sources/vi_youtube_allowlist.jsonl
-target_hours: 10
+target_hours: 1
 episode_limit_per_feed: null
