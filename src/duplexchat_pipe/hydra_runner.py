@@ -57,6 +57,8 @@ FIELD_ALIASES = {
     "runtime.process_workers": "process_workers",
     "runtime.separation_workers": "separation_workers",
     "runtime.scratch_dir": "scratch_dir",
+    "runtime.debug_outputs.enabled": "debug_outputs_enabled",
+    "runtime.debug_outputs.dir": "debug_outputs_dir",
     "diarization.enabled": "enable_diarization",
     "diarization.backend": "diarization_backend",
     "diarization.model": "diarization_model",

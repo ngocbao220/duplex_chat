@@ -12,6 +12,7 @@ def test_config_from_hydra_maps_vi_poc_values():
             "runtime": {
                 "device": "auto",
                 "multi_gpu": {"enabled": True, "device_ids": [0, 1]},
+                "debug_outputs": {"enabled": False, "dir": "outputs/debug"},
             },
             "diarization": {
                 "enabled": True,
@@ -32,6 +33,8 @@ def test_config_from_hydra_maps_vi_poc_values():
     assert cfg.runtime_device == "auto"
     assert cfg.multi_gpu_enabled is True
     assert cfg.multi_gpu_device_ids == [0, 1]
+    assert cfg.debug_outputs_enabled is False
+    assert str(cfg.debug_outputs_dir) == "outputs/debug"
     assert cfg.enable_diarization is True
     assert cfg.diarization_backend == "sortformer"
     assert cfg.diarization_model == "nvidia/diar_sortformer_4spk-v1"

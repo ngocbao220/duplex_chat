@@ -33,6 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--process-workers", type=int, default=4, help="Number of concurrent diarization threads (default: 4).")
     run_parser.add_argument("--separation-workers", type=int, default=2, help="Number of concurrent separation threads (default: 2).")
     run_parser.add_argument("--scratch-dir", type=Path, default=None, help="Local NVMe scratch dir for temp files (e.g. $LOCALDIR on Miyabi).")
+    run_parser.add_argument("--debug-outputs-dir", type=Path, default=Path("./outputs"), help="Directory for phase debug outputs (default: ./outputs).")
+    run_parser.add_argument("--no-debug-outputs", action="store_true", help="Disable phase debug outputs under outputs/.")
     run_parser.add_argument("--mp3-bitrate-kbps", type=int, default=128)
     run_parser.add_argument("--refresh-db", action="store_true")
     run_parser.add_argument(
@@ -141,6 +143,8 @@ def main() -> None:
         cfg.process_workers = args.process_workers
         cfg.separation_workers = args.separation_workers
         cfg.scratch_dir = args.scratch_dir
+        cfg.debug_outputs_dir = args.debug_outputs_dir
+        cfg.debug_outputs_enabled = not args.no_debug_outputs
         cfg.mp3_bitrate_kbps = args.mp3_bitrate_kbps
         cfg.enable_diarization = bool(args.enable_diarization)
         cfg.diarization_backend = args.diarization_backend

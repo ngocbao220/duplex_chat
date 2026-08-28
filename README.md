@@ -198,6 +198,20 @@ With `--enable-diarization --enable-separation`, each sample is one dialogue:
   labels, separation model info
 - `diarization.json`: the episode's diarization segments
 
+### Debug phase outputs
+
+Runs also write inspectable phase artifacts under `outputs/` by default. For
+each processed episode or single-audio model test, diarization labels are in:
+
+```text
+outputs/<episode_or_model>/phase_02_diarization/labels/
+```
+
+The label files are Audacity-compatible `start<TAB>end<TAB>Label` text files:
+`speakers.txt`, `vad.txt`, and one file per normalized speaker such as
+`SPEAKER_00.txt` and `SPEAKER_01.txt`. Disable these artifacts for large crawls
+with `--no-debug-outputs`, or redirect them with `--debug-outputs-dir`.
+
 ### Distributed / resumable crawling
 
 Feeds are sharded across nodes by stride `feed_urls[node_index::num_nodes]`.

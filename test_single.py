@@ -6,6 +6,12 @@ from pathlib import Path
 
 from duplexchat_pipe.audio import load_wav_tensor
 from duplexchat_pipe.diarize import load_diarization_pipeline, run_diarization
+from duplexchat_pipe.outputs import (
+    copy_file,
+    save_wav,
+    write_diarization_phase,
+    write_json,
+)
 from duplexchat_pipe.separate import load_separation_models, run_separation
 
 # Tự động tìm thiết bị (dùng GPU nếu có, ngược lại dùng CPU)
@@ -21,6 +27,21 @@ if device == "cpu":
 
 import argparse
 
+
+def release_diarization_gpu_memory(diarize_pipeline):
+    if hasattr(diarize_pipeline, "to"):
+        diarize_pipeline.to(torch.device("cpu"))
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def resolve_output_dir(output_prefix: str, output_dir: str | None = None) -> Path:
+    if output_dir:
+        return Path(output_dir)
+    parent = Path(output_prefix).parent
+    return parent if str(parent) != "." else Path("outputs") / "single_audio"
+
+
 def run_single_audio(
     audio_path_str,
     diarize_chunk=60.0,
@@ -30,6 +51,7 @@ def run_single_audio(
     separation_backend="dialoguesidon",
     separation_model=None,
     output_prefix="output_speaker",
+    output_dir=None,
 ):
     audio_path = Path(audio_path_str)
     if not audio_path.exists():
@@ -41,12 +63,20 @@ def run_single_audio(
     print(f"Diarization: backend={diarization_backend}, model={diarization_model}")
     print(f"Separation: backend={separation_backend}, model={separation_model or 'default'}")
     
+    phase_output_dir = resolve_output_dir(output_prefix, output_dir)
+    phase_output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        phase_output_dir / "phase_00_input" / "input.json",
+        {"audio_path": str(audio_path), "audio_name": audio_path.name},
+    )
+
     temp_wav = Path("temp_test_audio.wav")
     print("[0/4] Converting audio to 16kHz mono WAV...")
     subprocess.run([
         "ffmpeg", "-y", "-i", str(audio_path),
         "-ar", "16000", "-ac", "1", str(temp_wav)
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    copy_file(temp_wav, phase_output_dir / "phase_01_preprocess" / "audio_16k_mono.wav")
 
     print("[1/4] Loading Models...")
     diarize_pipeline = load_diarization_pipeline(
@@ -62,6 +92,12 @@ def run_single_audio(
     
     print("[2/4] Running Diarization...")
     segments = run_diarization(diarize_pipeline, temp_wav, max_chunk_dur=diarize_chunk)
+    write_diarization_phase(
+        phase_output_dir,
+        segments,
+        model=diarization_model,
+        backend=diarization_backend,
+    )
     print(f"Found {len(segments)} diarization segments.")
     for seg in segments[:5]:
         print(f"  {seg['speaker']}: {seg['start']:.2f}s - {seg['end']:.2f}s")
@@ -70,8 +106,7 @@ def run_single_audio(
     
     print("[3/4] Running Separation...")
     if device == "cuda":
-        diarize_pipeline.to(torch.device("cpu"))
-        torch.cuda.empty_cache()
+        release_diarization_gpu_memory(diarize_pipeline)
         
     wav, sr = load_wav_tensor(temp_wav)
     # Tự động tính overlap_seconds bằng 1/6 của separate_chunk (vd 30s -> 5s)
@@ -92,6 +127,18 @@ def run_single_audio(
     out_B = f"{output_prefix}_B.wav"
     torchaudio.save(out_A, spk0, out_sr)
     torchaudio.save(out_B, spk1, out_sr)
+    save_wav(phase_output_dir / "phase_04_separation" / "speaker_A.wav", spk0, out_sr)
+    save_wav(phase_output_dir / "phase_04_separation" / "speaker_B.wav", spk1, out_sr)
+    write_json(
+        phase_output_dir / "phase_04_separation" / "separation.json",
+        {
+            "backend": separation_backend,
+            "model": separation_model,
+            "sample_rate": out_sr,
+            "speaker_A": out_A,
+            "speaker_B": out_B,
+        },
+    )
     
     print(f"Done! Saved to:")
     print(f" - {out_A} (Người A)")
@@ -107,6 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("--separation-backend", default="dialoguesidon", help="Separation backend: dialoguesidon, sepformer, mossformer2")
     parser.add_argument("--separation-model", default=None, help="Separation model id or alias")
     parser.add_argument("--output-prefix", default="output_speaker", help="Output WAV prefix, e.g. runs/sortformer__sepformer/output")
+    parser.add_argument("--output-dir", default=None, help="Directory for phase outputs and labels")
     
     args = parser.parse_args()
     run_single_audio(
@@ -118,4 +166,5 @@ if __name__ == "__main__":
         args.separation_backend,
         args.separation_model,
         args.output_prefix,
+        args.output_dir,
     )

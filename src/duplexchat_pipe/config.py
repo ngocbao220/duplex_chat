@@ -44,6 +44,8 @@ class Config:
     separation_backend: str = "dialoguesidon"
     separation_model: str | None = None
     separation_num_steps: int = 30
+    debug_outputs_enabled: bool = True
+    debug_outputs_dir: Path = Path("./outputs")
     cleanup_audio_cache: bool = True
     timeout_seconds: int = 30
     node_index: int = 0

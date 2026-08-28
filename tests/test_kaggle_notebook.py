@@ -18,5 +18,18 @@ def test_kaggle_notebook_has_model_audio_tests():
     assert "speechbrain/sepformer-wsj02mix" in source
     assert "alibabasglab/MossFormer2_SS_16K" in source
     assert "--output-prefix" in source
+    assert "--output-dir" in source
     assert "speaker_A.wav" in source
     assert "speaker_B.wav" in source
+    assert "RUN_ALL_MODELS = True" in source
+    assert "FAILED_TESTS" in source
+
+
+def test_kaggle_notebook_uses_uploaded_zip_not_git_clone():
+    notebook = json.loads(Path("notebook/kaggle.ipynb").read_text())
+    source = "\n".join(cell.get("source", "") for cell in notebook["cells"])
+
+    assert "duplexchat_project.zip" in source
+    assert "/kaggle/working/duplexchat_project" in source
+    assert "git clone" not in source
+    assert "git pull" not in source

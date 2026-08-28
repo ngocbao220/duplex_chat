@@ -1,0 +1,97 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+import torch
+
+from duplexchat_pipe.config import Config
+from duplexchat_pipe.pipeline import (
+    AudioItem,
+    SeparationTask,
+    _debug_episode_dir,
+    _write_debug_diarization_outputs,
+    _write_debug_separation_outputs,
+)
+
+
+def test_debug_episode_dir_sanitizes_key(tmp_path: Path):
+    cfg = Config(debug_outputs_dir=tmp_path)
+
+    assert _debug_episode_dir(cfg, "abc/def ghi").name == "abc_def_ghi"
+
+
+def test_write_debug_diarization_outputs(tmp_path: Path):
+    cfg = Config(
+        debug_outputs_enabled=True,
+        debug_outputs_dir=tmp_path,
+        diarization_backend="pyannote",
+        diarization_model="model-id",
+    )
+    wav_path = tmp_path / "source.wav"
+    wav_path.write_bytes(b"fake wav")
+    dialogue = SimpleNamespace(
+        start=0.0,
+        end=2.0,
+        duration=2.0,
+        speakers=["SPEAKER_00", "SPEAKER_01"],
+        segments=[
+            {"speaker": "raw_a", "start": 0.0, "end": 1.0},
+            {"speaker": "raw_b", "start": 1.0, "end": 2.0},
+        ],
+    )
+
+    _write_debug_diarization_outputs(
+        cfg,
+        "episode-key",
+        wav_path,
+        dialogue.segments,
+        [dialogue],
+        duration_sec=2.0,
+    )
+
+    out_dir = tmp_path / "episode-key"
+    assert (out_dir / "phase_01_preprocess" / "audio_16k_mono.wav").read_bytes() == b"fake wav"
+    assert (out_dir / "phase_02_diarization" / "labels" / "SPEAKER_00.txt").read_text() == (
+        "0.000\t1.000\tSPEAKER_00\n"
+    )
+    assert (out_dir / "phase_03_dialogues" / "dialogues.json").exists()
+
+
+def test_write_debug_separation_outputs(tmp_path: Path, monkeypatch):
+    cfg = Config(
+        debug_outputs_enabled=True,
+        debug_outputs_dir=tmp_path,
+        separation_backend="sepformer",
+        separation_model="speechbrain/sepformer-wsj02mix",
+    )
+    task = SeparationTask(
+        dlg_key="episode_0000",
+        episode_key="episode",
+        dlg_wav=torch.zeros(1, 16),
+        dlg_start=0.0,
+        dlg_end=1.0,
+        dialogue=SimpleNamespace(),
+        item=AudioItem("audio", "rss", "vi", {}, {}),
+        episode_duration=1.0,
+        cfg=cfg,
+        device="cpu",
+    )
+
+    def fake_save_wav(path, wav, sample_rate):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{tuple(wav.shape)} {sample_rate}", encoding="utf-8")
+        return path
+
+    monkeypatch.setattr("duplexchat_pipe.pipeline.outputs_mod.save_wav", fake_save_wav)
+
+    _write_debug_separation_outputs(
+        task,
+        torch.zeros(1, 16),
+        torch.ones(1, 16),
+        sample_rate=16000,
+        model_id="model-id",
+    )
+
+    phase_dir = tmp_path / "episode" / "phase_04_separation" / "episode_0000"
+    assert (phase_dir / "speaker_A.wav").read_text() == "(1, 16) 16000"
+    assert (phase_dir / "speaker_B.wav").read_text() == "(1, 16) 16000"
+    assert "model-id" in (phase_dir / "separation.json").read_text()

@@ -22,6 +22,7 @@ from duplexchat_pipe import (
     db,
     dialogue as dialogue_mod,
     diarize,
+    outputs as outputs_mod,
     rss,
     separate as separate_mod,
     sources,
@@ -297,6 +298,72 @@ def _make_error_result(key: str, error: str, raw_path: Path | None) -> Processed
     )
 
 
+def _debug_episode_dir(cfg: Config, episode_key: str) -> Path:
+    return Path(cfg.debug_outputs_dir) / outputs_mod.safe_name(episode_key)
+
+
+def _write_debug_diarization_outputs(
+    cfg: Config,
+    episode_key: str,
+    wav_path: Path,
+    segments: list[dict],
+    valid_dialogues: list,
+    duration_sec: float,
+) -> None:
+    if not cfg.debug_outputs_enabled:
+        return
+    try:
+        out_dir = _debug_episode_dir(cfg, episode_key)
+        outputs_mod.write_json(
+            out_dir / "phase_00_input" / "input.json",
+            {"episode_key": episode_key},
+        )
+        outputs_mod.copy_file(
+            wav_path,
+            out_dir / "phase_01_preprocess" / "audio_16k_mono.wav",
+        )
+        outputs_mod.write_diarization_phase(
+            out_dir,
+            segments,
+            duration_sec=duration_sec,
+            model=cfg.diarization_model,
+            backend=cfg.diarization_backend,
+        )
+        outputs_mod.write_dialogues_phase(out_dir, valid_dialogues)
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("Failed to write debug diarization outputs for %s: %s", episode_key, exc)
+
+
+def _write_debug_separation_outputs(
+    task: SeparationTask,
+    spk0: torch.Tensor,
+    spk1: torch.Tensor,
+    sample_rate: int,
+    model_id: str | None,
+) -> None:
+    cfg = task.cfg
+    if not cfg.debug_outputs_enabled:
+        return
+    try:
+        phase_dir = _debug_episode_dir(cfg, task.episode_key) / "phase_04_separation" / task.dlg_key
+        outputs_mod.save_wav(phase_dir / "speaker_A.wav", spk0, sample_rate)
+        outputs_mod.save_wav(phase_dir / "speaker_B.wav", spk1, sample_rate)
+        outputs_mod.write_json(
+            phase_dir / "separation.json",
+            {
+                "dialogue_key": task.dlg_key,
+                "dialogue_start": task.dlg_start,
+                "dialogue_end": task.dlg_end,
+                "backend": cfg.separation_backend,
+                "model": model_id,
+                "sample_rate": sample_rate,
+                "device": task.device,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("Failed to write debug separation outputs for %s: %s", task.dlg_key, exc)
+
+
 # ── Stage 1: Diarize ────────────────────────────────────────────────────────
 
 def _diarize_episode(
@@ -342,6 +409,14 @@ def _diarize_episode(
             max_single_speaker_ratio=cfg.dialogue_max_single_speaker_ratio,
             min_duration_seconds=cfg.dialogue_min_duration_seconds,
             max_duration_seconds=cfg.dialogue_max_duration_seconds,
+        )
+        _write_debug_diarization_outputs(
+            cfg,
+            key,
+            wav_path,
+            segments,
+            valid_dialogues,
+            duration,
         )
 
         if len(valid_dialogues) < 4:
@@ -498,6 +573,7 @@ def _separate_dialogue(
         meta["device"] = task.device
         meta["gpu_id"] = int(task.device.split(":", 1)[1]) if task.device.startswith("cuda:") else None
         meta["channels"] = 2
+        _write_debug_separation_outputs(task, spk0, spk1, sep_sr, meta["separation_model"])
 
         diarization_data = {
             "segments": dlg.segments,
@@ -611,6 +687,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
             ("separation", f"{cfg.enable_separation} {cfg.separation_backend}"),
             ("device", cfg.diarization_device),
             ("multi_gpu", ",".join(map(str, gpu_ids)) if gpu_ids else "disabled"),
+            ("debug_outputs", str(Path(cfg.debug_outputs_dir)) if cfg.debug_outputs_enabled else "disabled"),
             ("target_hours", str(cfg.target_hours or "")),
         ],
     )

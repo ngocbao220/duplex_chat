@@ -7,6 +7,9 @@ download_workers: 4
 process_workers: 4
 separation_workers: 2
 scratch_dir: null
+debug_outputs:
+  enabled: true
+  dir: outputs
 multi_gpu:
   enabled: false
   device_ids: []
