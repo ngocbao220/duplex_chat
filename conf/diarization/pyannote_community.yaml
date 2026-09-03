@@ -1,8 +1,0 @@
-enabled: true
-backend: pyannote
-model: pyannote/speaker-diarization-community-1
-device: auto
-dialogue_gap_seconds: 5.0
-dialogue_min_duration_seconds: 10.0
-dialogue_max_duration_seconds: 600.0
-dialogue_max_single_speaker_ratio: 0.8

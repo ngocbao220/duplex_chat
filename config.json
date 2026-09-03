@@ -1,0 +1,65 @@
+{
+  "source": {
+    "feeds_db_url": "https://public.podcastindex.org/podcastindex_feeds.db.tgz",
+    "languages": ["vi", "vi-vn"],
+    "feed_allowlist": "sources/vi_allowlist.jsonl",
+    "youtube_allowlist": "sources/vi_youtube_allowlist.jsonl",
+    "target_hours": 1,
+    "episode_limit_per_feed": null
+  },
+  "audio": {
+    "output_dir": "data/wds_vi_poc",
+    "cache_dir": "data/cache_vi_poc",
+    "sample_rate": 16000,
+    "channels": 1,
+    "mp3_bitrate_kbps": 128,
+    "min_original_sample_rate": 16000,
+    "min_original_bitrate": 32000
+  },
+  "runtime": {
+    "device": "auto",
+    "allow_cpu_fallback": true,
+    "log_root": "logs",
+    "run_id": null,
+    "rss_workers": 16,
+    "download_workers": 4,
+    "process_workers": 4,
+    "separation_workers": 2,
+    "scratch_dir": null,
+    "timeout_seconds": 30,
+    "node_index": 0,
+    "num_nodes": 1,
+    "debug_outputs": {
+      "enabled": true,
+      "dir": "outputs"
+    },
+    "multi_gpu": {
+      "enabled": false,
+      "device_ids": [],
+      "strategy": "round_robin"
+    }
+  },
+  "diarization": {
+    "enabled": true,
+    "backend": "pyannote",
+    "model": "pyannote/speaker-diarization-community-1",
+    "device": "auto",
+    "dialogue_gap_seconds": 5.0,
+    "dialogue_min_duration_seconds": 10.0,
+    "dialogue_max_duration_seconds": 600.0,
+    "dialogue_max_single_speaker_ratio": 0.8
+  },
+  "separation": {
+    "enabled": true,
+    "backend": "dialoguesidon",
+    "model": "sarulab-speech/DialogueSidon",
+    "num_steps": 30
+  },
+  "benchmark": {
+    "enabled": false,
+    "vad_backend": "silero",
+    "asr_model": "vinai/PhoWhisper-large",
+    "speaker_embedding_model": "speechbrain/spkrec-ecapa-voxceleb",
+    "backchannel_terms": ["dạ", "vâng", "ừ", "ờ", "ừm", "đúng rồi", "vậy hả", "thế à"]
+  }
+}

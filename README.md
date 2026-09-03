@@ -126,16 +126,21 @@ Rows are globally deduplicated by `(audio_url, dialogue_idx)`.
 The construction pipeline crawls podcast feeds, extracts two-speaker dialogues,
 separates them, and writes WebDataset shards.
 
+By default, `duplexchat-pipe run` reads `config.json`. Use dotted `key=value`
+overrides for one-off runs.
+
 ```bash
 # Whole-episode audio only (no diarization):
-uv run duplexchat-pipe run --output ./data/wds
+uv run duplexchat-pipe run --output ./data/wds \
+    diarization.enabled=false separation.enabled=false
 
 # + diarization (required for dialogue extraction):
-uv run duplexchat-pipe run --output ./data/wds --enable-diarization
+uv run duplexchat-pipe run --output ./data/wds \
+    diarization.enabled=true separation.enabled=false
 
 # + DialogueSidon two-speaker separation (stereo output):
 uv run duplexchat-pipe run --output ./data/wds \
-    --enable-diarization --enable-separation
+    diarization.enabled=true separation.enabled=true
 ```
 
 Supported diarization model aliases:
@@ -220,11 +225,10 @@ under `<cache-dir>/<node_index>/` so re-runs skip finished episodes.
 **`--num-nodes` must stay constant across re-runs** or the stride assignment
 (and thus dedup) breaks. See `jobs/crawl.sh`.
 
-### Vietnamese POC with Hydra
+### Vietnamese POC with config.json
 
-The Vietnamese proof-of-concept config lives under `conf/` and targets 5-10
-hours by default. Hydra is the source of truth for these runs; bash scripts only
-forward overrides.
+The Vietnamese proof-of-concept config lives in `config.json`. Bash scripts read
+that file and forward `key=value` overrides.
 
 ```bash
 # End-to-end Vietnamese POC
@@ -251,6 +255,13 @@ Logs are written to `logs/YYYY-MM-DD/<run_id>/` with `run.log`,
 `resolved_config.yaml`, `phase_tree.txt`, `stats_table.md`, `errors.jsonl`, and
 `artifacts.json`. The same config can run individual phases through
 `jobs/vi/01_collect_sources.sh` ... `jobs/vi/06_benchmark.sh`.
+
+Equivalent direct CLI usage:
+
+```bash
+uv run duplexchat-pipe run --phase end2end source.target_hours=2.5
+uv run duplexchat-pipe run --config config.json --phase benchmark
+```
 
 ### Post-processing: filter + dedup
 

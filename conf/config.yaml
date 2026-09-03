@@ -1,8 +1,0 @@
-defaults:
-  - source: vi_poc
-  - audio: default
-  - diarization: pyannote_community
-  - separation: dialoguesidon
-  - benchmark: default
-  - runtime: local
-  - _self_

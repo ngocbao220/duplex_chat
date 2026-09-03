@@ -18,8 +18,8 @@ dependencies = [
     "torchaudio",
     "torchcodec",
     "diffusers",
-    "huggingface_hub",
-    "hydra-core",
+    "huggingface-hub",
+    "wrapt>=2.4.0",
 ]
 
 [project.scripts]
