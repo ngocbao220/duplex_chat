@@ -9,6 +9,7 @@ from duplexchat_pipe.pipeline import (
     SeparationTask,
     _build_dialogue_meta,
     _debug_episode_dir,
+    _separate_dialogue,
     _write_debug_diarization_outputs,
     _write_debug_separation_outputs,
 )
@@ -111,3 +112,52 @@ def test_dialogue_meta_uses_configured_metadata_language():
     meta = _build_dialogue_meta(cfg, item, 60.0, 0, dialogue)
 
     assert meta["language"] == "vi"
+
+
+def test_separate_dialogue_loads_model_for_task_device(monkeypatch):
+    loaded_devices = []
+
+    def fake_load(device, backend, model_id):
+        loaded_devices.append(device)
+        return {
+            "backend": "dialoguesidon",
+            "model_id": "fake-model",
+            "sample_rate": 16000,
+            "device": torch.device(device),
+        }
+
+    def fake_run(wav, sample_rate, num_steps, models, progress_callback=None):
+        assert str(models["device"]) == "cuda:1"
+        return wav, wav * 0, sample_rate
+
+    monkeypatch.setattr("duplexchat_pipe.pipeline.separate_mod.load_separation_models", fake_load)
+    monkeypatch.setattr("duplexchat_pipe.pipeline.separate_mod.run_separation", fake_run)
+    monkeypatch.setattr("duplexchat_pipe.pipeline.audio.tensors_to_stereo_mp3_bytes", lambda *args: b"mp3")
+    monkeypatch.setattr("duplexchat_pipe.pipeline._write_debug_separation_outputs", lambda *args: None)
+
+    cfg = Config(enable_separation=True, separation_backend="dialoguesidon", separation_model="fake-model")
+    task = SeparationTask(
+        dlg_key="episode_0001",
+        episode_key="episode",
+        dlg_wav=torch.ones(1, 160),
+        dlg_start=0.0,
+        dlg_end=0.01,
+        dialogue=SimpleNamespace(start=0.0, end=0.01, duration=0.01, segments=[], speakers=["A", "B"]),
+        item=AudioItem(
+            audio_url="https://example.com/audio.wav",
+            rss_url="https://example.com/feed.xml",
+            language="vi",
+            feed_meta={},
+            entry_meta={},
+        ),
+        episode_duration=1.0,
+        cfg=cfg,
+        device="cuda:1",
+    )
+
+    result = _separate_dialogue(task, None, None)
+
+    assert result.status == "ok"
+    assert loaded_devices == ["cuda:1"]
+    assert result.meta is not None
+    assert result.meta["device"] == "cuda:1"

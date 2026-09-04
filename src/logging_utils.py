@@ -40,6 +40,7 @@ def setup_run_logging(log_root: Path, run_id: str | None = None) -> Path:
         "phase_tree.txt": "",
         "stats_table.md": "",
         "errors.jsonl": "",
+        "video_stats.jsonl": "",
         "artifacts.json": "{}\n",
     }.items():
         path = run_dir / name

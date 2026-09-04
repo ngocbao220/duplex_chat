@@ -130,8 +130,27 @@ class Stats:
     errors: int = 0
 
 
+@dataclass
+class EpisodeProgress:
+    key: str
+    url: str
+    source_url: str
+    source_type: str
+    duration_sec: float
+    pending_results: int = 0
+    collected_sec: float = 0.0
+    written: int = 0
+    skipped: int = 0
+    errors: int = 0
+    completed: bool = False
+
+
 def _short_key(key: str, chars: int = 8) -> str:
     return key[:chars]
+
+
+def _format_hours(seconds: float) -> str:
+    return f"{seconds / 3600:.2f}h"
 
 
 def _acquire_tqdm_position() -> int:
@@ -186,6 +205,53 @@ def _make_chunk_progress(desc: str, unit: str):
                 _release_tqdm_position(abs(position))
 
     return _callback
+
+
+def _append_video_stats(run_dir: Path | None, event: str, progress: EpisodeProgress) -> None:
+    if run_dir is None:
+        return
+    payload = {
+        "event": event,
+        "episode_key": progress.key,
+        "url": progress.url,
+        "source_url": progress.source_url,
+        "source_type": progress.source_type,
+        "duration_sec": progress.duration_sec,
+        "duration_hours": progress.duration_sec / 3600,
+        "collected_sec": progress.collected_sec,
+        "collected_hours": progress.collected_sec / 3600,
+        "written": progress.written,
+        "skipped": progress.skipped,
+        "errors": progress.errors,
+        "created_at": dt.datetime.utcnow().isoformat(),
+    }
+    with (run_dir / "video_stats.jsonl").open("a", encoding="utf-8") as fp:
+        fp.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+
+
+def _log_video_start(run_dir: Path | None, item: AudioItem, key: str, duration_sec: float) -> EpisodeProgress:
+    progress = EpisodeProgress(
+        key=key,
+        url=item.audio_url,
+        source_url=item.rss_url,
+        source_type=item.source_type,
+        duration_sec=duration_sec,
+    )
+    LOGGER.info("Processing video: %s, duration=%s", item.audio_url, _format_hours(duration_sec))
+    _append_video_stats(run_dir, "start", progress)
+    return progress
+
+
+def _log_video_complete(run_dir: Path | None, progress: EpisodeProgress) -> None:
+    if progress.completed:
+        return
+    progress.completed = True
+    LOGGER.info(
+        "Complete video: %s, collected=%s data",
+        progress.url,
+        _format_hours(progress.collected_sec),
+    )
+    _append_video_stats(run_dir, "complete", progress)
 
 
 class ProcessedDB:
@@ -637,7 +703,7 @@ def _build_dialogue_meta(cfg: Config, item: AudioItem, duration: float, idx: int
 
 def _separate_dialogue(
     task: SeparationTask,
-    separation_models: dict,
+    separation_models: dict | None,
     separation_lock: threading.Lock | None,
 ) -> ProcessedResult:
     """Run speaker separation on a single dialogue and return a ProcessedResult."""
@@ -645,7 +711,7 @@ def _separate_dialogue(
     dlg = task.dialogue
     try:
         models_for_task = separation_models
-        if str(separation_models.get("device")) != task.device:
+        if models_for_task is None or str(models_for_task.get("device")) != task.device:
             models_for_task = separate_mod.load_separation_models(
                 task.device, cfg.separation_backend, cfg.separation_model
             )
@@ -909,14 +975,13 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         diarize_lock = threading.Lock()
     if cfg.enable_separation and cfg.enable_diarization:
         separation_device = pick_task_device(cfg.diarization_device, 0, gpu_ids)
-        separation_models = separate_mod.load_separation_models(
-            separation_device, cfg.separation_backend, cfg.separation_model
-        )
         separation_devices = (
             [f"cuda:{device_id}" for device_id in gpu_ids]
             if gpu_ids and cfg.diarization_device.startswith("cuda")
-            else [str(separation_models.get("device", separation_device))]
+            else [separation_device]
         )
+        for device in separation_devices:
+            separate_mod.load_separation_models(device, cfg.separation_backend, cfg.separation_model)
         separation_locks = {device: threading.Lock() for device in separation_devices}
     elif cfg.enable_separation:
         LOGGER.warning("enable_separation requires enable_diarization; separation disabled.")
@@ -925,6 +990,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
     pending_downloads: set = set()
     pending_diarize: set = set()
     pending_separate: set = set()
+    episode_progress: dict[str, EpisodeProgress] = {}
+    episode_lock = threading.Lock()
 
     rss_pool = ThreadPoolExecutor(max_workers=cfg.rss_workers)
     download_pool = ThreadPoolExecutor(max_workers=max(1, cfg.download_workers))
@@ -937,6 +1004,45 @@ def crawl_and_build_dataset(cfg: Config) -> None:
     stats = Stats()
     separation_task_index = 0
 
+    def _register_episode_start(downloaded: DownloadedItem) -> None:
+        with episode_lock:
+            if downloaded.key not in episode_progress:
+                episode_progress[downloaded.key] = _log_video_start(
+                    cfg.run_dir,
+                    downloaded.item,
+                    downloaded.key,
+                    downloaded.duration,
+                )
+
+    def _prepare_episode_completion(dr: DiarizeResult) -> None:
+        with episode_lock:
+            progress = episode_progress.get(dr.episode_key)
+            if progress is None:
+                return
+            progress.pending_results = len(dr.separation_tasks) + len(dr.results)
+            if progress.pending_results == 0:
+                _log_video_complete(cfg.run_dir, progress)
+
+    def _mark_episode_result(result: ProcessedResult) -> None:
+        episode_key = result.key.rsplit("_", 1)[0] if "_" in result.key else result.key
+        with episode_lock:
+            progress = episode_progress.get(episode_key)
+            if progress is None:
+                return
+            if result.status == "ok":
+                progress.written += 1
+                if result.meta is not None:
+                    duration_key = "dialogue_duration_sec" if "dialogue_idx" in result.meta else "duration_sec"
+                    progress.collected_sec += float(result.meta.get(duration_key, 0.0))
+            elif result.status in {"skipped_duration", "skipped_no_dialogues", "skipped_low_quality"}:
+                progress.skipped += 1
+            else:
+                progress.errors += 1
+            if progress.pending_results > 0:
+                progress.pending_results -= 1
+            if progress.pending_results <= 0:
+                _log_video_complete(cfg.run_dir, progress)
+
     def _drain_separations() -> None:
         """Drain completed separation futures."""
         if not pending_separate:
@@ -947,6 +1053,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         for future in done:
             result = future.result()
             _handle_processed_result(result, cfg, writer, processed_db, audio_pbar, stats)
+            _mark_episode_result(result)
             if _target_hours_reached(cfg, stats):
                 break
 
@@ -963,14 +1070,17 @@ def crawl_and_build_dataset(cfg: Config) -> None:
             if dr.status != "ok":
                 # Skip or error — mark in DB and clean up
                 _handle_processed_result(
-                    ProcessedResult(
+                    result := ProcessedResult(
                         key=dr.episode_key, status=dr.status, meta=None,
                         audio_bytes=None, diarization=None, diarization_error=None,
                         error=dr.error, raw_path=dr.raw_path,
                     ),
                     cfg, writer, processed_db, audio_pbar, stats,
                 )
+                _mark_episode_result(result)
                 continue
+
+            _prepare_episode_completion(dr)
 
             # Enqueue separation tasks, draining the separation pool when
             # the in-flight queue grows too large so dlg_wav tensors don't
@@ -993,13 +1103,14 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                 separation_task_index += 1
                 task_lock = separation_locks.get(_device_lock_key(task.device))
                 sep_future = separate_pool.submit(
-                    _separate_dialogue, task, separation_models, task_lock,
+                    _separate_dialogue, task, None, task_lock,
                 )
                 pending_separate.add(sep_future)
 
             # Handle direct results (non-separation path)
             for result in dr.results:
                 _handle_processed_result(result, cfg, writer, processed_db, audio_pbar, stats)
+                _mark_episode_result(result)
                 if _target_hours_reached(cfg, stats):
                     break
 
@@ -1021,8 +1132,10 @@ def crawl_and_build_dataset(cfg: Config) -> None:
             result = future.result()
             if isinstance(result, ProcessedResult):
                 _handle_processed_result(result, cfg, writer, processed_db, audio_pbar, stats)
+                _mark_episode_result(result)
                 continue
 
+            _register_episode_start(result)
             if cfg.enable_diarization and diarization_pipeline is not None:
                 diarize_future = diarize_pool.submit(
                     _diarize_episode, result, cfg, diarization_pipeline, diarize_lock, gpu_ids,
@@ -1032,6 +1145,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                 # Non-diarization: process directly
                 proc_result = _process_no_diarization(result, cfg)
                 _handle_processed_result(proc_result, cfg, writer, processed_db, audio_pbar, stats)
+                _mark_episode_result(proc_result)
 
     try:
         max_pending_feeds = max(1, cfg.rss_workers) * FEED_FUTURE_BUFFER_MULTIPLIER
@@ -1131,7 +1245,14 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         summary_path = cfg.output_dir / "summary.json"
         summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
         append_stats_table(run_dir, "end2end", summary)
-        write_artifacts(run_dir, {"summary": str(summary_path), "output_dir": str(cfg.output_dir)})
+        write_artifacts(
+            run_dir,
+            {
+                "summary": str(summary_path),
+                "output_dir": str(cfg.output_dir),
+                "video_stats": str(run_dir / "video_stats.jsonl"),
+            },
+        )
 
 
 def _handle_processed_result(
