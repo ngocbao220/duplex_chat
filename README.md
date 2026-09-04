@@ -304,8 +304,11 @@ UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run duplexchat-pipe run \
 ```
 
 The benchmark reads each WebDataset `audio.mp3` stereo sample and writes
-`summary.json`, `metrics.jsonl`, and `review_manifest.jsonl`. Current metrics:
+`summary.json`, `metrics.jsonl`, `review_manifest.jsonl`, `metrics_table.md`,
+and `turn_taking_table.md`. Current metrics:
 
+- `dnsmos`: Microsoft DNSMOS P.835 overall MOS from an ONNX model such as
+  `DNSMOS/sig_bak_ovr.onnx`, when `benchmark.dnsmos_model_path` is configured.
 - `sq_stoi`, `sq_pesq`, `sq_si_sdr`: reference-free estimates from
   `torchaudio.pipelines.SQUIM_OBJECTIVE`.
 - `squim_mos`: MOS from `torchaudio.pipelines.SQUIM_SUBJECTIVE` when
@@ -316,6 +319,32 @@ The benchmark reads each WebDataset `audio.mp3` stereo sample and writes
 
 `squim_mos` is not Microsoft DNSMOS. It is the Torchaudio-SQUIM subjective MOS
 estimate, named separately to avoid mixing metric families.
+
+For one pair of separated speaker files, run benchmark directly without building
+a WebDataset:
+
+```bash
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python src/benchmark.py --single \
+    --speakerA outputs/speaker_A.wav \
+    --speakerB outputs/speaker_B.wav \
+    --output outputs/benchmark.json \
+    --dnsmos-model DNSMOS/sig_bak_ovr.onnx
+```
+
+That single-file command writes three inspectable outputs:
+
+- `outputs/benchmark.json`: full metric payload.
+- `outputs/benchmark.metrics.md`: table for DNSMOS, SQ-STOI, SQ-PESQ, SQ-SI-SDR,
+  SQUIM MOS, ITC, and ITD.
+- `outputs/benchmark.turn_taking.md`: turn exchanges per minute, mean turn
+  duration, backchannels per minute, simultaneous speech percentage, and
+  overlapping transitions percentage.
+
+Install benchmark-only optional dependencies when you need DNSMOS and ITC/ITD:
+
+```bash
+uv sync --extra benchmark
+```
 
 ### Distributed / resumable crawling
 

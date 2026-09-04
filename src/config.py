@@ -5,7 +5,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from duplexchat_pipe.model_options import DIARIZATION_MODELS, SEPARATION_MODELS
+try:
+    from duplexchat_pipe.model_options import DIARIZATION_MODELS, SEPARATION_MODELS
+except ModuleNotFoundError:
+    from model_options import DIARIZATION_MODELS, SEPARATION_MODELS
 
 
 @dataclass
@@ -58,6 +61,7 @@ class Config:
     separation_workers: int = 2
     benchmark_enabled: bool = False
     benchmark_metrics: list[str] = field(default_factory=lambda: [
+        "dnsmos",
         "squim_mos",
         "sq_stoi",
         "sq_pesq",
@@ -70,6 +74,7 @@ class Config:
     benchmark_squim_objective_enabled: bool = True
     benchmark_squim_subjective_enabled: bool = True
     benchmark_squim_subjective_reference_path: Path | None = None
+    benchmark_dnsmos_model_path: Path | None = None
     benchmark_speaker_embedding_model: str = "speechbrain/spkrec-ecapa-voxceleb"
 
 
@@ -123,6 +128,7 @@ FIELD_ALIASES = {
     "benchmark.squim_objective.enabled": "benchmark_squim_objective_enabled",
     "benchmark.squim_subjective.enabled": "benchmark_squim_subjective_enabled",
     "benchmark.squim_subjective.reference_path": "benchmark_squim_subjective_reference_path",
+    "benchmark.dnsmos_model_path": "benchmark_dnsmos_model_path",
     "benchmark.speaker_embedding_model": "benchmark_speaker_embedding_model",
 }
 
@@ -137,6 +143,7 @@ PATH_FIELDS = {
     "scratch_dir",
     "benchmark_output_dir",
     "benchmark_squim_subjective_reference_path",
+    "benchmark_dnsmos_model_path",
 }
 
 IGNORED_PREFIXES: tuple[str, ...] = ()

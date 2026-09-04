@@ -1,4 +1,35 @@
-"""DuplexChat construction pipeline (duplexchat-pipe)."""
+from __future__ import annotations
 
-__all__ = ["__version__"]
-__version__ = "0.1.0"
+import importlib
+import sys
+
+
+_MODULES = [
+    "model_options",
+    "logging_utils",
+    "config",
+    "audio",
+    "db",
+    "devices",
+    "dialogue",
+    "outputs",
+    "rss",
+    "sources",
+    "tags",
+    "wds",
+    "diarize",
+    "separate",
+    "benchmark",
+    "pipeline",
+    "runner",
+    "cli",
+]
+
+
+for _name in _MODULES:
+    _module = importlib.import_module(_name)
+    sys.modules[f"{__name__}.{_name}"] = _module
+    globals()[_name] = _module
+
+
+__all__ = list(_MODULES)

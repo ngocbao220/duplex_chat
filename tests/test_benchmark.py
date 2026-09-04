@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 import pytest
+import torchaudio
 
 from duplexchat_pipe import benchmark
 from duplexchat_pipe.config import Config, apply_config_data, apply_overrides
@@ -41,6 +42,7 @@ def test_config_maps_benchmark_settings(tmp_path: Path):
                     "enabled": True,
                     "reference_path": "refs/clean.wav",
                 },
+                "dnsmos_model_path": "DNSMOS/sig_bak_ovr.onnx",
                 "squim_objective": {"enabled": False},
                 "speaker_embedding_model": "embedding-model",
             }
@@ -53,6 +55,7 @@ def test_config_maps_benchmark_settings(tmp_path: Path):
     assert cfg.benchmark_device == "cpu"
     assert cfg.benchmark_squim_subjective_enabled is True
     assert cfg.benchmark_squim_subjective_reference_path == Path("refs/clean.wav")
+    assert cfg.benchmark_dnsmos_model_path == Path("DNSMOS/sig_bak_ovr.onnx")
     assert cfg.benchmark_squim_objective_enabled is False
     assert cfg.benchmark_speaker_embedding_model == "embedding-model"
 
@@ -143,6 +146,12 @@ def test_benchmark_writes_squim_and_track_metrics(monkeypatch, tmp_path: Path):
                 "sq_si_sdr": [16.0, 8.0],
             }
 
+    class FakeDNSMOSScorer:
+        unavailable_reason = None
+
+        def score(self, waveform, sample_rate):
+            return {"dnsmos": [3.5, 3.0]}
+
     class FakeSubjectiveScorer:
         unavailable_reason = None
 
@@ -155,6 +164,7 @@ def test_benchmark_writes_squim_and_track_metrics(monkeypatch, tmp_path: Path):
         def score(self, waveform, sample_rate):
             return {"itc": 0.8, "itd": 0.6}
 
+    monkeypatch.setattr(benchmark, "DNSMOSScorer", lambda cfg: FakeDNSMOSScorer())
     monkeypatch.setattr(benchmark, "SquimObjectiveScorer", lambda cfg: FakeObjectiveScorer())
     monkeypatch.setattr(benchmark, "SquimSubjectiveScorer", lambda cfg: FakeSubjectiveScorer())
     monkeypatch.setattr(benchmark, "EmbeddingScorer", lambda cfg: FakeEmbeddingScorer())
@@ -169,6 +179,7 @@ def test_benchmark_writes_squim_and_track_metrics(monkeypatch, tmp_path: Path):
     benchmark.run_benchmark(tmp_path / "wds", tmp_path / "reports", cfg)
 
     row = json.loads((tmp_path / "reports" / "metrics.jsonl").read_text().splitlines()[0])
+    assert row["dnsmos_mean"] == 3.25
     assert row["sq_stoi_mean"] == 0.815
     assert row["sq_pesq_A"] == 3.4
     assert row["sq_si_sdr_B"] == 8.0
@@ -176,6 +187,8 @@ def test_benchmark_writes_squim_and_track_metrics(monkeypatch, tmp_path: Path):
     assert row["itc"] == 0.8
     assert row["itd"] == 0.6
     assert row["metric_status"] == "ok"
+    assert (tmp_path / "reports" / "metrics_table.md").exists()
+    assert (tmp_path / "reports" / "turn_taking_table.md").exists()
 
 
 def test_benchmark_marks_unavailable_metric_without_failing(monkeypatch, tmp_path: Path):
@@ -210,3 +223,64 @@ def test_benchmark_marks_unavailable_metric_without_failing(monkeypatch, tmp_pat
     assert row["itc"] == 0.9
     assert row["metric_status"] == "partial"
     assert row["metric_errors"]["squim_objective"] == "SQUIM unavailable"
+
+
+def test_single_speaker_cli_writes_benchmark_json(monkeypatch, tmp_path: Path):
+    spk_a = tmp_path / "speaker_A.wav"
+    spk_b = tmp_path / "speaker_B.wav"
+    out_json = tmp_path / "benchmark.json"
+    torchaudio.save(str(spk_a), torch.ones(1, 16000), 16000)
+    torchaudio.save(str(spk_b), torch.zeros(1, 16000), 16000)
+
+    monkeypatch.setattr(
+        benchmark,
+        "score_waveform",
+        lambda waveform, sample_rate, cfg, key, separation_backend: {
+            "key": key,
+            "duration_sec": waveform.shape[-1] / sample_rate,
+            "separation_backend": separation_backend,
+            "sq_stoi_A": 0.9,
+            "sq_stoi_B": 0.8,
+            "sq_stoi_mean": 0.85,
+            "metric_status": "ok",
+        },
+    )
+
+    args = benchmark._build_parser().parse_args(
+        [
+            "--single",
+            "--speakerA",
+            str(spk_a),
+            "--speakerB",
+            str(spk_b),
+            "--output",
+            str(out_json),
+            "--metrics",
+            "sq_stoi",
+        ]
+    )
+    benchmark._run_single(args)
+
+    row = json.loads(out_json.read_text())
+    assert row["key"] == "speaker_A"
+    assert row["sq_stoi_mean"] == 0.85
+    assert out_json.with_suffix(".metrics.md").exists()
+    assert out_json.with_suffix(".turn_taking.md").exists()
+
+
+def test_compute_turn_taking_stats_from_stereo_activity():
+    sample_rate = 1000
+    waveform = torch.zeros(2, sample_rate * 4)
+    waveform[0, 0:1000] = 0.5
+    waveform[1, 800:1400] = 0.5
+    waveform[0, 2000:3000] = 0.5
+    waveform[1, 3000:3600] = 0.5
+
+    stats = benchmark.compute_turn_taking_stats(waveform, sample_rate)
+
+    assert stats["turn_exchanges_per_min"] is not None
+    assert stats["turn_exchanges_per_min"] > 0
+    assert stats["mean_turn_duration_sec"] is not None
+    assert stats["simultaneous_speech_pct"] is not None
+    assert stats["simultaneous_speech_pct"] > 0
+    assert stats["overlapping_transitions_pct"] is not None

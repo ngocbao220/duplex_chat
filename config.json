@@ -57,9 +57,10 @@
   },
   "benchmark": {
     "enabled": true,
-    "metrics": ["squim_mos", "sq_stoi", "sq_pesq", "sq_si_sdr", "itc", "itd"],
+    "metrics": ["dnsmos", "squim_mos", "sq_stoi", "sq_pesq", "sq_si_sdr", "itc", "itd"],
     "output_dir": "reports",
     "device": "auto",
+    "dnsmos_model_path": null,
     "squim_objective": {
       "enabled": true
     },
