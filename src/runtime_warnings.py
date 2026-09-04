@@ -7,11 +7,11 @@ import warnings
 def suppress_pyannote_tf32_warning() -> None:
     """Hide noisy third-party runtime warnings without changing model behavior."""
     suppress_noisy_runtime_logs()
+    warnings.filterwarnings("ignore", message=r".*TensorFloat-32.*")
+    warnings.filterwarnings("ignore", message=r".*TF32.*")
     try:
         from pyannote.audio.utils.reproducibility import ReproducibilityWarning
     except Exception:  # noqa: BLE001
-        warnings.filterwarnings("ignore", message=r".*TensorFloat-32.*")
-        warnings.filterwarnings("ignore", message=r".*TF32.*")
         return
 
     warnings.filterwarnings("ignore", category=ReproducibilityWarning)

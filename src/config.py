@@ -79,6 +79,21 @@ class Config:
     benchmark_squim_subjective_reference_path: Path | None = None
     benchmark_dnsmos_model_path: Path | None = None
     benchmark_speaker_embedding_model: str = "speechbrain/spkrec-ecapa-voxceleb"
+    cholimex_enabled: bool = False
+    cholimex_backchannel_max_duration: float = 1.0
+    cholimex_min_vad_duration: float = 0.0
+    cholimex_vad_onset: float | None = None
+    cholimex_vad_offset: float | None = None
+    cholimex_merge_gap: float = 0.0
+    cholimex_min_reference_duration: float = 2.0
+    cholimex_cosine_similarity_threshold: float = 0.5
+    cholimex_overlap_padding: float = 0.10
+    cholimex_proposal_backend: str = "dialoguesidon"
+    cholimex_proposal_model: str | None = "sarulab-speech/DialogueSidon"
+    cholimex_overlap_separator_backend: str = "dialoguesidon"
+    cholimex_overlap_separator_model: str | None = "sarulab-speech/DialogueSidon"
+    cholimex_speaker_embedding_model: str = "speechbrain/spkrec-ecapa-voxceleb"
+    cholimex_output_stereo: bool = False
 
 
 FIELD_ALIASES = {
@@ -137,6 +152,21 @@ FIELD_ALIASES = {
     "benchmark.squim_subjective.reference_path": "benchmark_squim_subjective_reference_path",
     "benchmark.dnsmos_model_path": "benchmark_dnsmos_model_path",
     "benchmark.speaker_embedding_model": "benchmark_speaker_embedding_model",
+    "cholimex.enabled": "cholimex_enabled",
+    "cholimex.backchannel_max_duration": "cholimex_backchannel_max_duration",
+    "cholimex.min_vad_duration": "cholimex_min_vad_duration",
+    "cholimex.vad_onset": "cholimex_vad_onset",
+    "cholimex.vad_offset": "cholimex_vad_offset",
+    "cholimex.merge_gap": "cholimex_merge_gap",
+    "cholimex.min_reference_duration": "cholimex_min_reference_duration",
+    "cholimex.cosine_similarity_threshold": "cholimex_cosine_similarity_threshold",
+    "cholimex.overlap_padding": "cholimex_overlap_padding",
+    "cholimex.proposal_backend": "cholimex_proposal_backend",
+    "cholimex.proposal_model": "cholimex_proposal_model",
+    "cholimex.overlap_separator_backend": "cholimex_overlap_separator_backend",
+    "cholimex.overlap_separator_model": "cholimex_overlap_separator_model",
+    "cholimex.speaker_embedding_model": "cholimex_speaker_embedding_model",
+    "cholimex.output_stereo": "cholimex_output_stereo",
 }
 
 PATH_FIELDS = {

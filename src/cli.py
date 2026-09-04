@@ -123,6 +123,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("overrides", nargs="*", help="Config overrides such as source.target_hours=2.5.")
 
+    cholimex_parser = subparsers.add_parser("cholimex", help="Run Cholimex on one local audio file")
+    cholimex_parser.add_argument("--config", type=Path, default=Path("configs/config.json"), help="JSON config path (default: configs/config.json).")
+    cholimex_parser.add_argument("--input", type=Path, required=True, help="Input audio path.")
+    cholimex_parser.add_argument("--output-dir", type=Path, required=True, help="Output directory for Cholimex WAV/debug artifacts.")
+    cholimex_parser.add_argument("--runtime-device", default=argparse.SUPPRESS, help="Global device policy (auto, cpu, cuda, cuda:N).")
+    cholimex_parser.add_argument("--no-cpu-fallback", action="store_true", default=argparse.SUPPRESS, help="Fail instead of falling back to CPU when CUDA is requested but unavailable.")
+    cholimex_parser.add_argument("--separation-num-steps", type=int, default=argparse.SUPPRESS)
+    cholimex_parser.add_argument("overrides", nargs="*", help="Config overrides such as cholimex.overlap_padding=0.1.")
+
     return parser
 
 
@@ -224,6 +233,19 @@ def main() -> None:
                 shutil.rmtree(db_dir)
 
         run_phase(cfg, args.phase)
+    elif args.command == "cholimex":
+        from duplexchat_pipe.cholimex import run_cholimex_file
+
+        cfg = load_config(args.config)
+        apply_overrides(cfg, args.overrides)
+        if hasattr(args, "runtime_device"):
+            cfg.runtime_device = args.runtime_device
+        if hasattr(args, "no_cpu_fallback"):
+            cfg.allow_cpu_fallback = False
+        if hasattr(args, "separation_num_steps"):
+            cfg.separation_num_steps = args.separation_num_steps
+        cfg.cholimex_enabled = True
+        run_cholimex_file(args.input, args.output_dir, cfg)
 
 
 if __name__ == "__main__":

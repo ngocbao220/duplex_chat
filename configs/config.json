@@ -75,5 +75,22 @@
       "reference_path": null
     },
     "speaker_embedding_model": "speechbrain/spkrec-ecapa-voxceleb"
+  },
+  "cholimex": {
+    "enabled": false,
+    "backchannel_max_duration": 1.0,
+    "min_vad_duration": 0.0,
+    "vad_onset": null,
+    "vad_offset": null,
+    "merge_gap": 0.0,
+    "min_reference_duration": 2.0,
+    "cosine_similarity_threshold": 0.5,
+    "overlap_padding": 0.1,
+    "proposal_backend": "dialoguesidon",
+    "proposal_model": "sarulab-speech/DialogueSidon",
+    "overlap_separator_backend": "dialoguesidon",
+    "overlap_separator_model": "sarulab-speech/DialogueSidon",
+    "speaker_embedding_model": "speechbrain/spkrec-ecapa-voxceleb",
+    "output_stereo": false
   }
 }

@@ -22,6 +22,7 @@ _MODULES = [
     "diarize",
     "separate",
     "benchmark",
+    "cholimex",
     "pipeline",
     "runner",
     "cli",
