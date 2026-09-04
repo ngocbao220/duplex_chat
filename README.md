@@ -50,6 +50,10 @@ outputs/<tên input>/speaker_B.wav
 format Audacity `start<TAB>end<TAB>label`. Hai file WAV là audio đích theo từng
 speaker.
 
+Pipeline thử nghiệm Cholimex có README riêng tại `README_CHOLIMEX.md`. Flow này
+chạy giống `single.py` ở bước đầu để lấy hai provisional DialogueSidon tracks,
+sau đó dùng VAD masks và chỉ separation vùng overlap để giữ fidelity audio gốc.
+
 3. Chạy benchmark sau khi đã có hai audio speaker:
 
 ```bash
