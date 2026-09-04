@@ -203,7 +203,12 @@ def run_diarization(
     
     # 1. Dùng Silero VAD để lấy các phân đoạn có giọng nói
     try:
-        vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', trust_repo=True)
+        vad_model, utils = torch.hub.load(
+            repo_or_dir="snakers4/silero-vad",
+            model="silero_vad",
+            trust_repo=True,
+            verbose=False,
+        )
         get_speech_timestamps = utils[0]
         # Silero VAD yêu cầu tensor 1D và sample_rate=16000
         speech_ts = get_speech_timestamps(waveform[0], vad_model, sampling_rate=sample_rate)

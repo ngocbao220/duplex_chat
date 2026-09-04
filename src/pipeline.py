@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import itertools
 import json
 import logging
 import sqlite3
@@ -48,6 +49,9 @@ LOGGER = logging.getLogger(__name__)
 DB_COMMIT_INTERVAL = 200
 FEED_FUTURE_BUFFER_MULTIPLIER = 4
 TASK_BUFFER_MULTIPLIER = 4
+_TQDM_LOCK = threading.RLock()
+_TQDM_POSITION_POOL = list(range(2, 18))
+_TQDM_EXTRA_POSITIONS = itertools.count(18)
 
 
 @dataclass
@@ -114,12 +118,74 @@ class DiarizeResult:
     error: str | None = None
 
 
+def _device_lock_key(device: str | torch.device) -> str:
+    return str(device)
+
+
 @dataclass
 class Stats:
     total_duration_sec: float = 0.0
     written: int = 0
     skipped: int = 0
     errors: int = 0
+
+
+def _short_key(key: str, chars: int = 8) -> str:
+    return key[:chars]
+
+
+def _acquire_tqdm_position() -> int:
+    with _TQDM_LOCK:
+        if _TQDM_POSITION_POOL:
+            return _TQDM_POSITION_POOL.pop(0)
+        return next(_TQDM_EXTRA_POSITIONS)
+
+
+def _release_tqdm_position(position: int) -> None:
+    if position >= 18:
+        return
+    with _TQDM_LOCK:
+        if position not in _TQDM_POSITION_POOL:
+            _TQDM_POSITION_POOL.append(position)
+            _TQDM_POSITION_POOL.sort()
+
+
+def _run_unit_progress(desc: str, unit: str, callback):
+    position = _acquire_tqdm_position()
+    with _TQDM_LOCK:
+        pbar = tqdm(total=1, desc=desc, unit=unit, leave=False, position=position)
+    try:
+        return callback()
+    finally:
+        with _TQDM_LOCK:
+            pbar.update(1)
+            pbar.close()
+        _release_tqdm_position(position)
+
+
+def _make_chunk_progress(desc: str, unit: str):
+    pbar = None
+
+    def _callback(event: str, value: int) -> None:
+        nonlocal pbar
+        with _TQDM_LOCK:
+            if event == "start":
+                position = _acquire_tqdm_position()
+                pbar = tqdm(
+                    total=value,
+                    desc=desc,
+                    unit=unit,
+                    leave=False,
+                    position=position,
+                )
+            elif event == "advance" and pbar is not None:
+                pbar.update(value)
+            elif event == "close" and pbar is not None:
+                position = pbar.pos
+                pbar.close()
+                _release_tqdm_position(abs(position))
+
+    return _callback
 
 
 class ProcessedDB:
@@ -259,10 +325,19 @@ def _download_audio_item(
 
     try:
         t0 = time.monotonic()
+        desc = f"download:{_short_key(key)}"
         if item.source_type == "youtube":
-            raw_path = youtube.download_audio(item.audio_url, audio_dir, key)
+            raw_path = _run_unit_progress(
+                desc,
+                "file",
+                lambda: youtube.download_audio(item.audio_url, audio_dir, key),
+            )
         else:
-            audio.download_audio(item.audio_url, raw_path, cfg.timeout_seconds)
+            _run_unit_progress(
+                desc,
+                "file",
+                lambda: audio.download_audio(item.audio_url, raw_path, cfg.timeout_seconds),
+            )
         t_download = time.monotonic() - t0
         info = audio.probe_audio_info(raw_path)
         duration = info.duration
@@ -398,16 +473,29 @@ def _diarize_episode(
 
     try:
         t0 = time.monotonic()
-        audio.transcode_to_wav_16k_mono(downloaded.raw_path, wav_path)
+        _run_unit_progress(
+            f"transcode:{_short_key(key)}",
+            "file",
+            lambda: audio.transcode_to_wav_16k_mono(downloaded.raw_path, wav_path),
+        )
         t_transcode = time.monotonic() - t0
 
         try:
             t0 = time.monotonic()
+            progress = _make_chunk_progress(f"diarize:{_short_key(key)}", "chunk")
             if diarize_lock is None:
-                segments = diarize.run_diarization(diarization_pipeline, wav_path)
+                segments = diarize.run_diarization(
+                    diarization_pipeline,
+                    wav_path,
+                    progress_callback=progress,
+                )
             else:
                 with diarize_lock:
-                    segments = diarize.run_diarization(diarization_pipeline, wav_path)
+                    segments = diarize.run_diarization(
+                        diarization_pipeline,
+                        wav_path,
+                        progress_callback=progress,
+                    )
             t_diarize = time.monotonic() - t0
         except Exception as exc:  # noqa: BLE001
             return DiarizeResult(
@@ -416,12 +504,16 @@ def _diarize_episode(
                 error=f"diarization failed: {exc}",
             )
 
-        valid_dialogues = dialogue_mod.extract_valid_dialogues(
-            segments,
-            gap_seconds=cfg.dialogue_gap_seconds,
-            max_single_speaker_ratio=cfg.dialogue_max_single_speaker_ratio,
-            min_duration_seconds=cfg.dialogue_min_duration_seconds,
-            max_duration_seconds=cfg.dialogue_max_duration_seconds,
+        valid_dialogues = _run_unit_progress(
+            f"dialogues:{_short_key(key)}",
+            "step",
+            lambda: dialogue_mod.extract_valid_dialogues(
+                segments,
+                gap_seconds=cfg.dialogue_gap_seconds,
+                max_single_speaker_ratio=cfg.dialogue_max_single_speaker_ratio,
+                min_duration_seconds=cfg.dialogue_min_duration_seconds,
+                max_duration_seconds=cfg.dialogue_max_duration_seconds,
+            ),
         )
         _write_debug_diarization_outputs(
             cfg,
@@ -450,14 +542,16 @@ def _diarize_episode(
 
         if cfg.enable_separation:
             t0 = time.monotonic()
-            wav_tensor, _ = audio.load_wav_tensor(wav_path)
+            wav_tensor, _ = _run_unit_progress(
+                f"loadwav:{_short_key(key)}",
+                "file",
+                lambda: audio.load_wav_tensor(wav_path),
+            )
             t_load_wav = time.monotonic() - t0
 
             for idx, dlg in enumerate(valid_dialogues):
                 dlg_key = f"{key}_{idx:04d}"
-                task_device = pick_task_device(
-                    cfg.diarization_device, idx, task_device_ids or []
-                )
+                task_device = cfg.diarization_device
                 start_sample = int(dlg.start * 16_000)
                 end_sample = int(dlg.end * 16_000)
                 # Clone the slice so the full wav_tensor can be freed
@@ -556,14 +650,23 @@ def _separate_dialogue(
                 task.device, cfg.separation_backend, cfg.separation_model
             )
         t0 = time.monotonic()
+        progress = _make_chunk_progress(f"separate:{_short_key(task.dlg_key)} {task.device}", "chunk")
         if separation_lock is None:
             spk0, spk1, sep_sr = separate_mod.run_separation(
-                task.dlg_wav, 16_000, cfg.separation_num_steps, models_for_task
+                task.dlg_wav,
+                16_000,
+                cfg.separation_num_steps,
+                models_for_task,
+                progress_callback=progress,
             )
         else:
             with separation_lock:
                 spk0, spk1, sep_sr = separate_mod.run_separation(
-                    task.dlg_wav, 16_000, cfg.separation_num_steps, models_for_task
+                    task.dlg_wav,
+                    16_000,
+                    cfg.separation_num_steps,
+                    models_for_task,
+                    progress_callback=progress,
                 )
         t_sep = time.monotonic() - t0
 
@@ -798,17 +901,23 @@ def crawl_and_build_dataset(cfg: Config) -> None:
     diarization_pipeline = None
     separation_models = None
     diarize_lock = None
-    separation_lock = None
+    separation_locks: dict[str, threading.Lock] = {}
     if cfg.enable_diarization:
         diarization_pipeline = diarize.load_diarization_pipeline(
             cfg.diarization_model, cfg.diarization_device, cfg.diarization_backend
         )
         diarize_lock = threading.Lock()
     if cfg.enable_separation and cfg.enable_diarization:
+        separation_device = pick_task_device(cfg.diarization_device, 0, gpu_ids)
         separation_models = separate_mod.load_separation_models(
-            cfg.diarization_device, cfg.separation_backend, cfg.separation_model
+            separation_device, cfg.separation_backend, cfg.separation_model
         )
-        separation_lock = threading.Lock()
+        separation_devices = (
+            [f"cuda:{device_id}" for device_id in gpu_ids]
+            if gpu_ids and cfg.diarization_device.startswith("cuda")
+            else [str(separation_models.get("device", separation_device))]
+        )
+        separation_locks = {device: threading.Lock() for device in separation_devices}
     elif cfg.enable_separation:
         LOGGER.warning("enable_separation requires enable_diarization; separation disabled.")
 
@@ -826,6 +935,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
 
     interrupted = False
     stats = Stats()
+    separation_task_index = 0
 
     def _drain_separations() -> None:
         """Drain completed separation futures."""
@@ -842,6 +952,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
 
     def _drain_diarizations() -> None:
         """Drain completed diarize futures → feed separation pool."""
+        nonlocal separation_task_index
         if not pending_diarize:
             return
         done, remaining = wait(pending_diarize, return_when=FIRST_COMPLETED)
@@ -874,8 +985,15 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                         break
                 if _target_hours_reached(cfg, stats):
                     break
+                task.device = pick_task_device(
+                    cfg.diarization_device,
+                    separation_task_index,
+                    gpu_ids,
+                )
+                separation_task_index += 1
+                task_lock = separation_locks.get(_device_lock_key(task.device))
                 sep_future = separate_pool.submit(
-                    _separate_dialogue, task, separation_models, separation_lock,
+                    _separate_dialogue, task, separation_models, task_lock,
                 )
                 pending_separate.add(sep_future)
 

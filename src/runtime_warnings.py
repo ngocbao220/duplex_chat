@@ -20,6 +20,7 @@ def suppress_pyannote_tf32_warning() -> None:
 def suppress_noisy_runtime_logs() -> None:
     warnings.filterwarnings("ignore", message=r".*legacy format.*torch\.export\.save.*")
     warnings.filterwarnings("ignore", message=r".*Please generate a new pt2 file.*")
+    warnings.filterwarnings("ignore", message=r".*torch\.jit\.load.*deprecated.*")
     for logger_name in (
         "httpx",
         "httpcore",
