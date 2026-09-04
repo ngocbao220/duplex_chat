@@ -3,9 +3,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 import torch
 
 from duplexchat_pipe import cli
+from duplexchat_pipe.cholimex.pipeline import _align_proposal_track, run_cholimex_file
 from duplexchat_pipe.cholimex.models import ActivitySegment, Region
 from duplexchat_pipe.cholimex.reconstruction import reconstruct_tracks
 from duplexchat_pipe.cholimex.region_classifier import classify_regions
@@ -40,6 +42,7 @@ def test_cholimex_config_overrides():
 def test_cholimex_cli_dispatches_single_audio_runner(monkeypatch, tmp_path: Path):
     calls = {}
     input_path = tmp_path / "input.wav"
+    input_path.touch()
     output_dir = tmp_path / "out"
 
     def fake_load_config(path: Path):
@@ -87,6 +90,66 @@ def test_cholimex_cli_dispatches_single_audio_runner(monkeypatch, tmp_path: Path
     assert calls["enabled"] is True
     assert calls["device"] == "cpu"
     assert calls["steps"] == 2
+
+
+def test_cholimex_cli_rejects_missing_input_cleanly(monkeypatch, tmp_path: Path, capsys):
+    missing_input = tmp_path / "missing.wav"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "duplexchat-pipe",
+            "cholimex",
+            "--input",
+            str(missing_input),
+            "--output-dir",
+            str(tmp_path / "out"),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+
+    assert exc_info.value.code == 2
+    assert f"Cholimex input audio file does not exist: {missing_input}" in capsys.readouterr().err
+
+
+def test_cholimex_rejects_missing_input_before_transcode(monkeypatch, tmp_path: Path):
+    missing_input = tmp_path / "missing.wav"
+    output_dir = tmp_path / "out"
+
+    def fail_transcode(*_):
+        raise AssertionError("transcode should not run for a missing input")
+
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.audio.transcode_to_wav_16k_mono", fail_transcode)
+
+    try:
+        run_cholimex_file(missing_input, output_dir, Config())
+    except FileNotFoundError as exc:
+        assert str(missing_input) in str(exc)
+    else:
+        raise AssertionError("missing input should raise FileNotFoundError")
+
+
+def test_cholimex_aligns_proposal_tracks_to_original_length():
+    cropped = _align_proposal_track(
+        torch.arange(7, dtype=torch.float32).reshape(1, -1),
+        source_sample_rate=16000,
+        target_sample_rate=16000,
+        target_samples=5,
+        label="sidon_track_0",
+    )
+    padded = _align_proposal_track(
+        torch.ones(1, 3),
+        source_sample_rate=16000,
+        target_sample_rate=16000,
+        target_samples=5,
+        label="sidon_track_1",
+    )
+
+    assert torch.equal(cropped, torch.tensor([[0, 1, 2, 3, 4]], dtype=torch.float32))
+    assert torch.equal(padded, torch.tensor([[1, 1, 1, 0, 0]], dtype=torch.float32))
 
 
 def test_write_vad_artifacts_uses_only_active_one_labels(tmp_path: Path):

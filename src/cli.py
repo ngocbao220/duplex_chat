@@ -7,7 +7,12 @@ from pathlib import Path
 from duplexchat_pipe.config import apply_overrides, load_config
 from duplexchat_pipe.model_options import DIARIZATION_MODELS, SEPARATION_MODELS, resolve_model_alias
 from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
-from duplexchat_pipe.runner import run_phase
+
+
+def run_phase(cfg, phase: str):
+    from duplexchat_pipe.runner import run_phase as _run_phase
+
+    return _run_phase(cfg, phase)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -215,11 +220,11 @@ def _apply_run_args(cfg, args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    suppress_pyannote_tf32_warning()
     parser = build_parser()
     args = parser.parse_args()
 
     if args.command == "run":
+        suppress_pyannote_tf32_warning()
         cfg = load_config(args.config)
         apply_overrides(cfg, args.overrides)
         _apply_run_args(cfg, args)
@@ -234,6 +239,11 @@ def main() -> None:
 
         run_phase(cfg, args.phase)
     elif args.command == "cholimex":
+        if not args.input.is_file():
+            parser.error(f"Cholimex input audio file does not exist: {args.input}")
+
+        suppress_pyannote_tf32_warning()
+
         from duplexchat_pipe.cholimex import run_cholimex_file
 
         cfg = load_config(args.config)

@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 import torch
+import torchaudio.functional as F_audio
 
 from duplexchat_pipe import audio, outputs, separate
 from duplexchat_pipe.config import Config
@@ -20,13 +21,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 def run_cholimex_file(input_path: Path, output_dir: Path, cfg: Config) -> dict:
+    input_path = Path(input_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Cholimex input audio file does not exist: {input_path}")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     debug_dir = output_dir / "debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
 
     original_path = debug_dir / "original.wav"
     audio.ensure_ffmpeg()
-    audio.transcode_to_wav_16k_mono(Path(input_path), original_path)
+    audio.transcode_to_wav_16k_mono(input_path, original_path)
     original, sample_rate = audio.load_wav_tensor(original_path)
     duration_sec = original.shape[-1] / sample_rate
     device = resolve_device(cfg.runtime_device, cfg.allow_cpu_fallback)
@@ -43,8 +48,9 @@ def run_cholimex_file(input_path: Path, output_dir: Path, cfg: Config) -> dict:
         cfg.separation_num_steps,
         proposal_models,
     )
-    if sidon_sr != sample_rate or sidon_0.shape[-1] != original.shape[-1] or sidon_1.shape[-1] != original.shape[-1]:
-        raise RuntimeError("DialogueSidon proposal output is not aligned with original audio")
+    sidon_0 = _align_proposal_track(sidon_0, sidon_sr, sample_rate, original.shape[-1], "sidon_track_0")
+    sidon_1 = _align_proposal_track(sidon_1, sidon_sr, sample_rate, original.shape[-1], "sidon_track_1")
+    sidon_sr = sample_rate
     outputs.save_wav(debug_dir / "sidon_track_0.wav", sidon_0, sidon_sr)
     outputs.save_wav(debug_dir / "sidon_track_1.wav", sidon_1, sidon_sr)
 
@@ -183,3 +189,33 @@ def _write_reference_audio(
                 parts.append(original[:, start:end])
         if parts:
             outputs.save_wav(debug_dir / f"speaker_reference_{speaker}.wav", torch.cat(parts, dim=-1), sample_rate)
+
+
+def _align_proposal_track(
+    wav: torch.Tensor,
+    source_sample_rate: int,
+    target_sample_rate: int,
+    target_samples: int,
+    label: str,
+) -> torch.Tensor:
+    aligned = wav.detach().cpu().float()
+    if aligned.ndim == 1:
+        aligned = aligned.unsqueeze(0)
+    if aligned.shape[0] > 1:
+        aligned = aligned.mean(dim=0, keepdim=True)
+    if source_sample_rate != target_sample_rate:
+        LOGGER.warning(
+            "Resampling %s from %s Hz to %s Hz for timeline alignment",
+            label,
+            source_sample_rate,
+            target_sample_rate,
+        )
+        aligned = F_audio.resample(aligned, source_sample_rate, target_sample_rate)
+    diff = aligned.shape[-1] - target_samples
+    if diff > 0:
+        LOGGER.warning("Cropping %s by %d samples to match original timeline", label, diff)
+        return aligned[:, :target_samples]
+    if diff < 0:
+        LOGGER.warning("Padding %s by %d samples to match original timeline", label, -diff)
+        return torch.nn.functional.pad(aligned, (0, -diff))
+    return aligned
