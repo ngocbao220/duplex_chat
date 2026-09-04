@@ -178,6 +178,81 @@ uv pip install -r requirements/separation-mossformer2.txt
 For Sortformer, `requirements/diarization-sortformer.txt` follows NVIDIA's
 NeMo-from-GitHub install path when the PyPI NeMo package is not sufficient.
 
+### Single Audio Test
+
+Use `test_single.py` when you want to run diarization + separation on one local
+audio file and listen to the two separated WAV outputs. The script writes:
+
+- `<output-prefix>_A.wav` and `<output-prefix>_B.wav` for quick listening.
+- phase artifacts under `--output-dir`, including `phase_00_input/`,
+  `phase_01_preprocess/`, `phase_02_diarization/`, and
+  `phase_04_separation/`.
+
+Example with the default pyannote community diarization and DialogueSidon:
+
+```bash
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python test_single.py easy_1.wav \
+    --diarize-chunk 240 \
+    --separate-chunk 240 \
+    --output-prefix outputs/single_easy_1/speaker \
+    --output-dir outputs/single_easy_1/outputs
+```
+
+Example with Sortformer diarization and DialogueSidon:
+
+```bash
+uv sync --extra diarization-sortformer --extra separation-dialoguesidon
+
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python test_single.py easy_1.wav \
+    --diarize-chunk 240 \
+    --separate-chunk 240 \
+    --diarization-backend sortformer \
+    --diarization-model sortformer \
+    --separation-backend dialoguesidon \
+    --separation-model dialoguesidon \
+    --output-prefix outputs/single_sortformer_dialoguesidon/speaker \
+    --output-dir outputs/single_sortformer_dialoguesidon/outputs
+```
+
+Example with pyannote 3.1 and SepFormer:
+
+```bash
+uv sync --extra diarization-pyannote --extra separation-sepformer
+
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python test_single.py easy_1.wav \
+    --diarize-chunk 240 \
+    --separate-chunk 240 \
+    --diarization-backend pyannote \
+    --diarization-model pyannote-3.1 \
+    --separation-backend sepformer \
+    --separation-model sepformer \
+    --output-prefix outputs/single_pyannote31_sepformer/speaker \
+    --output-dir outputs/single_pyannote31_sepformer/outputs
+```
+
+For Kaggle, keep model-specific outputs under `/kaggle/working`:
+
+```bash
+AUDIO_PATH=/kaggle/input/datasets/ngocbaotrinhtuan/inputs/real.wav
+OUT_ROOT=/kaggle/working/model_audio_tests/pyannote31__dialoguesidon
+mkdir -p "$OUT_ROOT"
+
+MPLBACKEND=Agg uv run python test_single.py "$AUDIO_PATH" \
+    --diarize-chunk 240 \
+    --separate-chunk 240 \
+    --diarization-backend pyannote \
+    --diarization-model pyannote/speaker-diarization-3.1 \
+    --separation-backend dialoguesidon \
+    --separation-model sarulab-speech/DialogueSidon \
+    --output-prefix "$OUT_ROOT/speaker" \
+    --output-dir "$OUT_ROOT/outputs"
+```
+
+`test_single.py` runs separation on the full input audio after diarization; it
+does not run the production dialogue extraction step, so it does not create
+`phase_03_dialogues/dialogues.json`. Use `duplexchat-pipe run` for dialogue-level
+WebDataset samples.
+
 ### Architecture
 
 Four concurrent thread pools form a producer–consumer chain:
@@ -216,6 +291,31 @@ The label files are Audacity-compatible `start<TAB>end<TAB>Label` text files:
 `speakers.txt`, `vad.txt`, and one file per normalized speaker such as
 `SPEAKER_00.txt` and `SPEAKER_01.txt`. Disable these artifacts for large crawls
 with `--no-debug-outputs`, or redirect them with `--debug-outputs-dir`.
+
+### Benchmark metrics
+
+`config.json` enables benchmark output by default. After `--phase end2end` or
+the default `run` phase finishes, the pipeline writes reports under `reports/`.
+You can also re-run benchmark on existing shards:
+
+```bash
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run duplexchat-pipe run \
+    --config config.json --phase benchmark
+```
+
+The benchmark reads each WebDataset `audio.mp3` stereo sample and writes
+`summary.json`, `metrics.jsonl`, and `review_manifest.jsonl`. Current metrics:
+
+- `sq_stoi`, `sq_pesq`, `sq_si_sdr`: reference-free estimates from
+  `torchaudio.pipelines.SQUIM_OBJECTIVE`.
+- `squim_mos`: MOS from `torchaudio.pipelines.SQUIM_SUBJECTIVE` when
+  `benchmark.squim_subjective.reference_path` points to a non-matching clean
+  reference WAV. Without that reference, this metric is reported as unavailable.
+- `itc`, `itd`: speaker embedding consistency/distinctiveness metrics when
+  `speechbrain` and `benchmark.speaker_embedding_model` are available.
+
+`squim_mos` is not Microsoft DNSMOS. It is the Torchaudio-SQUIM subjective MOS
+estimate, named separately to avoid mixing metric families.
 
 ### Distributed / resumable crawling
 

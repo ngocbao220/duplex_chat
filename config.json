@@ -56,10 +56,17 @@
     "num_steps": 30
   },
   "benchmark": {
-    "enabled": false,
-    "vad_backend": "silero",
-    "asr_model": "vinai/PhoWhisper-large",
-    "speaker_embedding_model": "speechbrain/spkrec-ecapa-voxceleb",
-    "backchannel_terms": ["dạ", "vâng", "ừ", "ờ", "ừm", "đúng rồi", "vậy hả", "thế à"]
+    "enabled": true,
+    "metrics": ["squim_mos", "sq_stoi", "sq_pesq", "sq_si_sdr", "itc", "itd"],
+    "output_dir": "reports",
+    "device": "auto",
+    "squim_objective": {
+      "enabled": true
+    },
+    "squim_subjective": {
+      "enabled": true,
+      "reference_path": null
+    },
+    "speaker_embedding_model": "speechbrain/spkrec-ecapa-voxceleb"
   }
 }

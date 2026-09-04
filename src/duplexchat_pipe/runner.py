@@ -9,6 +9,13 @@ from duplexchat_pipe.logging_utils import append_stats_table, setup_run_logging,
 from duplexchat_pipe.pipeline import _iter_feed_urls, crawl_and_build_dataset
 
 
+def _benchmark_output_dir(cfg: Config) -> Path:
+    output_dir = cfg.benchmark_output_dir
+    if output_dir == Path("./reports") or output_dir == Path("reports"):
+        return output_dir / (cfg.run_id or "vi_poc")
+    return output_dir
+
+
 def collect_sources(cfg: Config) -> None:
     run_dir = setup_run_logging(cfg.log_root, cfg.run_id)
     cfg.run_id = run_dir.name
@@ -36,6 +43,8 @@ def collect_sources(cfg: Config) -> None:
 def run_phase(cfg: Config, phase: str) -> None:
     if phase in {"end2end", "run", "separate"}:
         crawl_and_build_dataset(cfg)
+        if phase in {"end2end", "run"} and cfg.benchmark_enabled:
+            run_benchmark(cfg.output_dir, _benchmark_output_dir(cfg), cfg)
         return
     if phase == "download_clean":
         cfg.enable_diarization = False
@@ -51,7 +60,6 @@ def run_phase(cfg: Config, phase: str) -> None:
         collect_sources(cfg)
         return
     if phase == "benchmark":
-        output_dir = Path("reports") / (cfg.run_id or "vi_poc")
-        run_benchmark(cfg.output_dir, output_dir, cfg.log_root, cfg.run_id)
+        run_benchmark(cfg.output_dir, _benchmark_output_dir(cfg), cfg)
         return
     raise ValueError(f"Unsupported phase '{phase}'")

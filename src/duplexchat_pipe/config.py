@@ -56,6 +56,21 @@ class Config:
     num_nodes: int = 1
     scratch_dir: Path | None = None  # local NVMe for temp/audio files; falls back to cache_dir
     separation_workers: int = 2
+    benchmark_enabled: bool = False
+    benchmark_metrics: list[str] = field(default_factory=lambda: [
+        "squim_mos",
+        "sq_stoi",
+        "sq_pesq",
+        "sq_si_sdr",
+        "itc",
+        "itd",
+    ])
+    benchmark_output_dir: Path = Path("./reports")
+    benchmark_device: str = "auto"
+    benchmark_squim_objective_enabled: bool = True
+    benchmark_squim_subjective_enabled: bool = True
+    benchmark_squim_subjective_reference_path: Path | None = None
+    benchmark_speaker_embedding_model: str = "speechbrain/spkrec-ecapa-voxceleb"
 
 
 FIELD_ALIASES = {
@@ -101,6 +116,14 @@ FIELD_ALIASES = {
     "separation.backend": "separation_backend",
     "separation.model": "separation_model",
     "separation.num_steps": "separation_num_steps",
+    "benchmark.enabled": "benchmark_enabled",
+    "benchmark.metrics": "benchmark_metrics",
+    "benchmark.output_dir": "benchmark_output_dir",
+    "benchmark.device": "benchmark_device",
+    "benchmark.squim_objective.enabled": "benchmark_squim_objective_enabled",
+    "benchmark.squim_subjective.enabled": "benchmark_squim_subjective_enabled",
+    "benchmark.squim_subjective.reference_path": "benchmark_squim_subjective_reference_path",
+    "benchmark.speaker_embedding_model": "benchmark_speaker_embedding_model",
 }
 
 PATH_FIELDS = {
@@ -112,9 +135,11 @@ PATH_FIELDS = {
     "run_dir",
     "debug_outputs_dir",
     "scratch_dir",
+    "benchmark_output_dir",
+    "benchmark_squim_subjective_reference_path",
 }
 
-IGNORED_PREFIXES = ("benchmark.",)
+IGNORED_PREFIXES: tuple[str, ...] = ()
 
 
 def _flatten_mapping(node: dict[str, Any], prefix: str = "") -> dict[str, Any]:
