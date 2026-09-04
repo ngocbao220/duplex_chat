@@ -7,6 +7,7 @@ ghi dữ liệu đầu ra kèm artifact để kiểm tra.
 
 Các cấu hình mặc định nằm trong `config.json`. Output chính của pipeline nằm ở
 `data/`, `outputs/`, `reports/`, và log theo từng lần chạy nằm trong `logs/`.
+Khi chạy CLI, từng phase có progress bar để theo dõi tiến trình.
 
 ## Lệnh chạy
 
@@ -29,6 +30,9 @@ outputs/<tên input>/run.json
 outputs/<tên input>/speakerA.wav
 outputs/<tên input>/speakerB.wav
 ```
+
+`<tên input>` là tên file cuối cùng, bỏ phần mở rộng. Ví dụ
+`kaggle/inputs/adasdasd/demo1.wav` sẽ ghi vào `outputs/demo1/`.
 
 `run.json` ghi các phase/artifact chính của lần chạy. Hai file WAV là audio đích
 theo từng speaker.

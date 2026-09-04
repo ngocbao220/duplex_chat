@@ -9,7 +9,8 @@ spec.loader.exec_module(single)
 
 
 def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path: Path):
-    input_path = tmp_path / "my_sample.wav"
+    input_path = tmp_path / "kaggle" / "inputs" / "adasdasd" / "demo1.wav"
+    input_path.parent.mkdir(parents=True)
     input_path.write_bytes(b"fake")
     calls = []
 
@@ -24,5 +25,5 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
 
     single.main()
 
-    assert calls[0][1]["output_dir"] == str(Path("outputs") / "my_sample")
-    assert (tmp_path / "outputs" / "my_sample" / "run.json").exists()
+    assert calls[0][1]["output_dir"] == str(Path("outputs") / "demo1")
+    assert (tmp_path / "outputs" / "demo1" / "run.json").exists()

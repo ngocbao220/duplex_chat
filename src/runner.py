@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Callable
+
+from tqdm import tqdm
 
 from duplexchat_pipe.benchmark import run_benchmark
 from duplexchat_pipe.config import Config
@@ -40,26 +43,41 @@ def collect_sources(cfg: Config) -> None:
     write_artifacts(run_dir, {"feeds": str(feeds_path), "source_stats": str(stats_path)})
 
 
+def _run_progress_steps(description: str, steps: list[tuple[str, Callable[[], None]]]) -> None:
+    with tqdm(total=len(steps), desc=description, unit="phase") as pbar:
+        for label, callback in steps:
+            pbar.set_postfix_str(label, refresh=True)
+            callback()
+            pbar.update(1)
+
+
 def run_phase(cfg: Config, phase: str) -> None:
     if phase in {"end2end", "run", "separate"}:
-        crawl_and_build_dataset(cfg)
+        steps = [("crawl/download/diarize/separate", lambda: crawl_and_build_dataset(cfg))]
         if phase in {"end2end", "run"} and cfg.benchmark_enabled:
-            run_benchmark(cfg.output_dir, _benchmark_output_dir(cfg), cfg)
+            steps.append(("benchmark", lambda: run_benchmark(cfg.output_dir, _benchmark_output_dir(cfg), cfg)))
+        _run_progress_steps(phase, steps)
         return
     if phase == "download_clean":
-        cfg.enable_diarization = False
-        cfg.enable_separation = False
-        crawl_and_build_dataset(cfg)
+        def run_download_clean() -> None:
+            cfg.enable_diarization = False
+            cfg.enable_separation = False
+            crawl_and_build_dataset(cfg)
+
+        _run_progress_steps(phase, [("download/clean", run_download_clean)])
         return
     if phase == "diarize_segment":
-        cfg.enable_diarization = True
-        cfg.enable_separation = False
-        crawl_and_build_dataset(cfg)
+        def run_diarize_segment() -> None:
+            cfg.enable_diarization = True
+            cfg.enable_separation = False
+            crawl_and_build_dataset(cfg)
+
+        _run_progress_steps(phase, [("download/diarize/segment", run_diarize_segment)])
         return
     if phase == "collect_sources":
-        collect_sources(cfg)
+        _run_progress_steps(phase, [("collect sources", lambda: collect_sources(cfg))])
         return
     if phase == "benchmark":
-        run_benchmark(cfg.output_dir, _benchmark_output_dir(cfg), cfg)
+        _run_progress_steps(phase, [("benchmark", lambda: run_benchmark(cfg.output_dir, _benchmark_output_dir(cfg), cfg))])
         return
     raise ValueError(f"Unsupported phase '{phase}'")

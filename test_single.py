@@ -4,6 +4,8 @@ import torchaudio
 import subprocess
 from pathlib import Path
 
+from tqdm import tqdm
+
 from duplexchat_pipe.audio import load_wav_tensor
 from duplexchat_pipe.diarize import load_diarization_pipeline, run_diarization
 from duplexchat_pipe.outputs import (
@@ -62,7 +64,7 @@ def run_single_audio(
     print(f"Config: Diarize Chunk={diarize_chunk}s, Separate Chunk={separate_chunk}s")
     print(f"Diarization: backend={diarization_backend}, model={diarization_model}")
     print(f"Separation: backend={separation_backend}, model={separation_model or 'default'}")
-    
+
     phase_output_dir = resolve_output_dir(output_prefix, output_dir)
     phase_output_dir.mkdir(parents=True, exist_ok=True)
     write_json(
@@ -71,74 +73,81 @@ def run_single_audio(
     )
 
     temp_wav = Path("temp_test_audio.wav")
-    print("[0/4] Converting audio to 16kHz mono WAV...")
-    subprocess.run([
-        "ffmpeg", "-y", "-i", str(audio_path),
-        "-ar", "16000", "-ac", "1", str(temp_wav)
-    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    copy_file(temp_wav, phase_output_dir / "phase_01_preprocess" / "audio_16k_mono.wav")
+    with tqdm(total=5, desc="single pipeline", unit="phase") as phase_pbar:
+        phase_pbar.set_postfix_str("preprocess", refresh=True)
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(audio_path),
+            "-ar", "16000", "-ac", "1", str(temp_wav)
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        copy_file(temp_wav, phase_output_dir / "phase_01_preprocess" / "audio_16k_mono.wav")
+        phase_pbar.update(1)
 
-    print("[1/4] Loading Models...")
-    diarize_pipeline = load_diarization_pipeline(
-        diarization_model,
-        device=device,
-        backend=diarization_backend,
-    )
-    sep_models = load_separation_models(
-        device=device,
-        backend=separation_backend,
-        model_id=separation_model,
-    )
-    
-    print("[2/4] Running Diarization...")
-    segments = run_diarization(diarize_pipeline, temp_wav, max_chunk_dur=diarize_chunk)
-    write_diarization_phase(
-        phase_output_dir,
-        segments,
-        model=diarization_model,
-        backend=diarization_backend,
-    )
-    print(f"Found {len(segments)} diarization segments.")
-    for seg in segments[:5]:
-        print(f"  {seg['speaker']}: {seg['start']:.2f}s - {seg['end']:.2f}s")
-    if len(segments) > 5:
-        print("  ...")
-    
-    print("[3/4] Running Separation...")
-    if device == "cuda":
-        release_diarization_gpu_memory(diarize_pipeline)
-        
-    wav, sr = load_wav_tensor(temp_wav)
-    # Tự động tính overlap_seconds bằng 1/6 của separate_chunk (vd 30s -> 5s)
-    overlap = max(1.0, separate_chunk / 6.0)
-    spk0, spk1, out_sr = run_separation(
-        wav,
-        sr,
-        num_steps=30,
-        models=sep_models,
-        chunk_seconds=separate_chunk,
-        overlap_seconds=overlap,
-    )
-    
-    print("[4/4] Saving output...")
-    output_path = Path(output_prefix)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    out_A = f"{output_prefix}_A.wav"
-    out_B = f"{output_prefix}_B.wav"
-    torchaudio.save(out_A, spk0, out_sr)
-    torchaudio.save(out_B, spk1, out_sr)
-    save_wav(phase_output_dir / "phase_04_separation" / "speaker_A.wav", spk0, out_sr)
-    save_wav(phase_output_dir / "phase_04_separation" / "speaker_B.wav", spk1, out_sr)
-    write_json(
-        phase_output_dir / "phase_04_separation" / "separation.json",
-        {
-            "backend": separation_backend,
-            "model": separation_model,
-            "sample_rate": out_sr,
-            "speaker_A": out_A,
-            "speaker_B": out_B,
-        },
-    )
+        phase_pbar.set_postfix_str("load models", refresh=True)
+        diarize_pipeline = load_diarization_pipeline(
+            diarization_model,
+            device=device,
+            backend=diarization_backend,
+        )
+        sep_models = load_separation_models(
+            device=device,
+            backend=separation_backend,
+            model_id=separation_model,
+        )
+        phase_pbar.update(1)
+
+        phase_pbar.set_postfix_str("diarization", refresh=True)
+        segments = run_diarization(diarize_pipeline, temp_wav, max_chunk_dur=diarize_chunk)
+        write_diarization_phase(
+            phase_output_dir,
+            segments,
+            model=diarization_model,
+            backend=diarization_backend,
+        )
+        phase_pbar.update(1)
+
+        print(f"Found {len(segments)} diarization segments.")
+        for seg in segments[:5]:
+            print(f"  {seg['speaker']}: {seg['start']:.2f}s - {seg['end']:.2f}s")
+        if len(segments) > 5:
+            print("  ...")
+
+        phase_pbar.set_postfix_str("separation", refresh=True)
+        if device == "cuda":
+            release_diarization_gpu_memory(diarize_pipeline)
+
+        wav, sr = load_wav_tensor(temp_wav)
+        # Tự động tính overlap_seconds bằng 1/6 của separate_chunk (vd 30s -> 5s)
+        overlap = max(1.0, separate_chunk / 6.0)
+        spk0, spk1, out_sr = run_separation(
+            wav,
+            sr,
+            num_steps=30,
+            models=sep_models,
+            chunk_seconds=separate_chunk,
+            overlap_seconds=overlap,
+        )
+        phase_pbar.update(1)
+
+        phase_pbar.set_postfix_str("save outputs", refresh=True)
+        output_path = Path(output_prefix)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        out_A = f"{output_prefix}_A.wav"
+        out_B = f"{output_prefix}_B.wav"
+        torchaudio.save(out_A, spk0, out_sr)
+        torchaudio.save(out_B, spk1, out_sr)
+        save_wav(phase_output_dir / "phase_04_separation" / "speaker_A.wav", spk0, out_sr)
+        save_wav(phase_output_dir / "phase_04_separation" / "speaker_B.wav", spk1, out_sr)
+        write_json(
+            phase_output_dir / "phase_04_separation" / "separation.json",
+            {
+                "backend": separation_backend,
+                "model": separation_model,
+                "sample_rate": out_sr,
+                "speaker_A": out_A,
+                "speaker_B": out_B,
+            },
+        )
+        phase_pbar.update(1)
     
     print(f"Done! Saved to:")
     print(f" - {out_A} (Người A)")
