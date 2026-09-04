@@ -367,6 +367,14 @@ def run_separation(
         max_val = wav.abs().max().clamp_min(1e-6)
         wav_norm = torch.nn.functional.pad(0.9 * wav / max_val, (160, 160))
         separated = _separate_chunk(wav_norm, num_steps, models)
+        target_out = max(1, round(total_samples * out_sr / SAMPLE_RATE_IN))
+        if separated.shape[-1] > target_out:
+            separated = separated[:, :target_out]
+        elif separated.shape[-1] < target_out:
+            separated = torch.cat(
+                [separated, torch.zeros(2, target_out - separated.shape[-1], device=device)],
+                dim=-1,
+            )
         if progress_callback is not None:
             progress_callback("advance", 1)
     else:

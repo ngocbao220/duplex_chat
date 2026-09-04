@@ -107,3 +107,27 @@ def test_dialoguesidon_separation_reports_chunk_progress(monkeypatch):
     assert events[0] == ("start", 4)
     assert events.count(("advance", 1)) == 4
     assert events[-1] == ("close", 0)
+
+
+def test_dialoguesidon_short_input_returns_original_timeline_length(monkeypatch):
+    def fake_separate_chunk(wav, num_steps, models):
+        return torch.stack([wav.reshape(-1), wav.reshape(-1) * 0], dim=0)
+
+    monkeypatch.setattr(separate, "_separate_chunk", fake_separate_chunk)
+
+    spk0, spk1, sr = separate.run_separation(
+        torch.ones(1, 1600),
+        16000,
+        0,
+        {
+            "backend": "dialoguesidon",
+            "sample_rate": 16000,
+            "device": torch.device("cpu"),
+        },
+        chunk_seconds=30.0,
+        overlap_seconds=5.0,
+    )
+
+    assert sr == 16000
+    assert spk0.shape == (1, 1600)
+    assert spk1.shape == (1, 1600)
