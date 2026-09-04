@@ -28,6 +28,7 @@ from duplexchat_pipe import (
     sources,
     tags as tag_filter,
     wds,
+    youtube,
 )
 from duplexchat_pipe.devices import pick_task_device, resolve_device, validate_multi_gpu
 from duplexchat_pipe.logging_utils import (
@@ -56,6 +57,7 @@ class AudioItem:
     language: str
     feed_meta: dict
     entry_meta: dict
+    source_type: str = "rss"
 
 
 @dataclass
@@ -257,7 +259,10 @@ def _download_audio_item(
 
     try:
         t0 = time.monotonic()
-        audio.download_audio(item.audio_url, raw_path, cfg.timeout_seconds)
+        if item.source_type == "youtube":
+            raw_path = youtube.download_audio(item.audio_url, audio_dir, key)
+        else:
+            audio.download_audio(item.audio_url, raw_path, cfg.timeout_seconds)
         t_download = time.monotonic() - t0
         info = audio.probe_audio_info(raw_path)
         duration = info.duration
@@ -520,6 +525,7 @@ def _build_dialogue_meta(cfg: Config, item: AudioItem, duration: float, idx: int
     return {
         "rss_url": item.rss_url,
         "audio_url": item.audio_url,
+        "source_type": item.source_type,
         "language": _metadata_language(cfg, item.language),
         "episode_duration_sec": duration,
         "dialogue_idx": idx,
@@ -618,6 +624,7 @@ def _process_no_diarization(
         meta = {
             "rss_url": downloaded.item.rss_url,
             "audio_url": downloaded.item.audio_url,
+            "source_type": downloaded.item.source_type,
             "language": _metadata_language(cfg, downloaded.item.language),
             "duration_sec": downloaded.duration,
             "feed": downloaded.item.feed_meta,
@@ -638,29 +645,91 @@ def _process_no_diarization(
 
 # ── Feed iteration ───────────────────────────────────────────────────────────
 
-def _iter_feed_urls(cfg: Config) -> list[tuple[str, str]]:
+def _rss_source(source_id: str, url: str, language: str, priority: int = 0) -> sources.SourceRecord:
+    return sources.SourceRecord(
+        source_id=source_id,
+        source_type="rss",
+        url=url,
+        language=language,
+        priority=priority,
+    )
+
+
+def _iter_sources(cfg: Config) -> list[sources.SourceRecord]:
+    source_records: list[sources.SourceRecord] = []
+    seen: set[str] = set()
+
+    for record in sorted(
+        sources.load_allowlist(cfg.youtube_allowlist),
+        key=lambda item: item.priority,
+        reverse=True,
+    ):
+        if record.source_type != "youtube" or record.url in seen:
+            continue
+        seen.add(record.url)
+        source_records.append(record)
+
+    if cfg.youtube_only:
+        return source_records
+
     tgz_path = db.download_feeds_db(cfg.feeds_db_url, cfg.cache_dir)
     db_path = db.extract_sqlite_db(tgz_path, cfg.cache_dir / "db")
 
-    seen = set()
-    feed_urls = []
     for rss_url, lang in db.iter_feed_urls(db_path, cfg.languages):
         if rss_url in seen:
             continue
         seen.add(rss_url)
-        feed_urls.append((rss_url, lang))
-    for record in sources.load_allowlist(cfg.feed_allowlist):
-        if record.source_type != "rss":
-            continue
-        if record.url in seen:
+        source_records.append(_rss_source(_hash_url(rss_url), rss_url, lang))
+
+    for record in sorted(
+        sources.load_allowlist(cfg.feed_allowlist),
+        key=lambda item: item.priority,
+        reverse=True,
+    ):
+        if record.source_type != "rss" or record.url in seen:
             continue
         seen.add(record.url)
-        feed_urls.append((record.url, record.language))
-    return feed_urls
+        source_records.append(record)
+
+    return source_records
+
+
+def _iter_feed_urls(cfg: Config) -> list[tuple[str, str]]:
+    return [
+        (record.url, record.language)
+        for record in _iter_sources(cfg)
+        if record.source_type == "rss"
+    ]
+
+
+def _collect_source_items(record: sources.SourceRecord, cfg: Config) -> list[AudioItem]:
+    if record.source_type == "rss":
+        return _collect_feed_items(record.url, record.language, cfg)
+    if record.source_type == "youtube":
+        feed_meta = {
+            "source_id": record.source_id,
+            "source_type": "youtube",
+            "url": record.url,
+            "title": record.show_name,
+            "license_notes": record.license_notes,
+            "priority": record.priority,
+        }
+        return [
+            AudioItem(
+                audio_url=entry["url"],
+                rss_url=record.url,
+                language=record.language,
+                feed_meta=feed_meta,
+                entry_meta=entry,
+                source_type="youtube",
+            )
+            for entry in youtube.iter_entries(record.url, cfg.episode_limit_per_feed)
+        ]
+    raise ValueError(f"Unsupported source_type {record.source_type!r}")
 
 
 def _submit_feed_futures(
-    feed_iter: Iterator[tuple[str, str]],
+    feed_iter: Iterator[sources.SourceRecord],
     feed_futures: dict,
     rss_pool: ThreadPoolExecutor,
     cfg: Config,
@@ -671,11 +740,11 @@ def _submit_feed_futures(
         if stats is not None and _target_hours_reached(cfg, stats):
             break
         try:
-            rss_url, lang = next(feed_iter)
+            record = next(feed_iter)
         except StopIteration:
             break
-        future = rss_pool.submit(_collect_feed_items, rss_url, lang, cfg)
-        feed_futures[future] = (rss_url, lang)
+        future = rss_pool.submit(_collect_source_items, record, cfg)
+        feed_futures[future] = record
 
 
 # ── Main orchestration ───────────────────────────────────────────────────────
@@ -713,11 +782,11 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         cfg.output_dir = cfg.output_dir / str(cfg.node_index)
         cfg.cache_dir.mkdir(parents=True, exist_ok=True)
         cfg.output_dir.mkdir(parents=True, exist_ok=True)
-    feed_urls = _iter_feed_urls(cfg)
+    feed_urls = _iter_sources(cfg)
     if cfg.num_nodes > 1:
         feed_urls = feed_urls[cfg.node_index::cfg.num_nodes]
     LOGGER.info(
-        "Node %d/%d: processing %d feeds (scratch=%s)",
+        "Node %d/%d: processing %d sources (scratch=%s)",
         cfg.node_index, cfg.num_nodes, len(feed_urls),
         cfg.scratch_dir or "cache_dir",
     )
@@ -851,7 +920,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         feed_futures: dict = {}
         _submit_feed_futures(feed_iter, feed_futures, rss_pool, cfg, max_pending_feeds, stats)
 
-        feed_pbar = tqdm(total=len(feed_urls), desc="feeds", unit="feed", leave=False)
+        feed_pbar = tqdm(total=len(feed_urls), desc="sources", unit="source", leave=False)
         audio_pbar = tqdm(desc="audio", unit="item", leave=False)
 
         while feed_futures:
@@ -861,11 +930,11 @@ def crawl_and_build_dataset(cfg: Config) -> None:
             done_feeds, _ = wait(set(feed_futures), return_when=FIRST_COMPLETED)
             for future in done_feeds:
                 feed_pbar.update(1)
-                rss_url, _lang = feed_futures.pop(future)
+                record = feed_futures.pop(future)
                 try:
                     items = future.result()
                 except Exception as exc:  # noqa: BLE001
-                    LOGGER.warning("Failed RSS fetch: %s (%s)", rss_url, exc)
+                    LOGGER.warning("Failed source fetch: %s (%s)", record.url, exc)
                     continue
 
                 for item in items:

@@ -1,0 +1,18 @@
+{
+  "sources": [
+    {
+      "source_id": "have_a_sip_youtube",
+      "show_name": "Have a Sip",
+      "language": "vi",
+      "license_notes": "public source, audio not redistributed",
+      "priority": 10,
+      "youtube": {
+        "playlists": [
+          "https://www.youtube.com/playlist?list=PLWrhnsc6Cvcrp7HmEWu8q0p95pRyGmpHi"
+        ],
+        "channels": [],
+        "videos": []
+      }
+    }
+  ]
+}

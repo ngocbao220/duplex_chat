@@ -13,11 +13,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run DuplexChat end-to-end pipeline.")
     parser.add_argument("--config", type=Path, default=Path("configs/config.json"))
     parser.add_argument("--target_hours", type=float, default=None)
+    parser.add_argument("--youtube-only", action="store_true")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     if args.target_hours is not None:
         cfg.target_hours = args.target_hours
+    if args.youtube_only:
+        cfg.youtube_only = True
     run_phase(cfg, "end2end")
 
 

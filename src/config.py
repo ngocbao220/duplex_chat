@@ -18,6 +18,7 @@ class Config:
     metadata_language: str = "vi"
     feed_allowlist: Path | None = None
     youtube_allowlist: Path | None = None
+    youtube_only: bool = False
     target_hours: float | None = None
     output_dir: Path = Path("./data/wds")
     cache_dir: Path = Path("./data/cache")
@@ -84,6 +85,7 @@ FIELD_ALIASES = {
     "metadata.language": "metadata_language",
     "source.feed_allowlist": "feed_allowlist",
     "source.youtube_allowlist": "youtube_allowlist",
+    "source.youtube_only": "youtube_only",
     "source.target_hours": "target_hours",
     "source.episode_limit_per_feed": "episode_limit_per_feed",
     "audio.output_dir": "output_dir",

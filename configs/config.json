@@ -3,7 +3,8 @@
     "feeds_db_url": "https://public.podcastindex.org/podcastindex_feeds.db.tgz",
     "languages": ["vi", "vi-vn"],
     "feed_allowlist": "configs/allowlist.jsonl",
-    "youtube_allowlist": "configs/youtube_allowlist.jsonl",
+    "youtube_allowlist": "configs/youtube_allowlist.json",
+    "youtube_only": false,
     "target_hours": 1,
     "episode_limit_per_feed": null
   },
@@ -37,8 +38,8 @@
       "dir": "outputs"
     },
     "multi_gpu": {
-      "enabled": false,
-      "device_ids": [],
+      "enabled": true,
+      "device_ids": [0, 1],
       "strategy": "round_robin"
     }
   },

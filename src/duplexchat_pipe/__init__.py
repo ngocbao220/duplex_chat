@@ -17,6 +17,7 @@ _MODULES = [
     "sources",
     "tags",
     "wds",
+    "youtube",
     "runtime_warnings",
     "diarize",
     "separate",

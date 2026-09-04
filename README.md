@@ -18,6 +18,12 @@ Khi chạy CLI, từng phase có progress bar để theo dõi tiến trình.
 uv run python end2end.py --target_hours 10
 ```
 
+Chỉ test các video/playlist trong `configs/youtube_allowlist.json`:
+
+```bash
+uv run --with yt-dlp python end2end.py --youtube-only --target_hours 1
+```
+
 2. Chạy 1 sample để debug pipeline:
 
 ```bash

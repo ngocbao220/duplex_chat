@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--languages", nargs="+", default=argparse.SUPPRESS)
     run_parser.add_argument("--feed-allowlist", type=Path, default=argparse.SUPPRESS)
     run_parser.add_argument("--youtube-allowlist", type=Path, default=argparse.SUPPRESS)
+    run_parser.add_argument("--youtube-only", action="store_true", default=argparse.SUPPRESS)
     run_parser.add_argument("--target-hours", type=float, default=argparse.SUPPRESS)
     run_parser.add_argument("--episode-limit", type=int, default=argparse.SUPPRESS)
     run_parser.add_argument("--max-duration-min", type=int, default=argparse.SUPPRESS)
@@ -138,6 +139,8 @@ def _apply_run_args(cfg, args: argparse.Namespace) -> None:
         cfg.feed_allowlist = args.feed_allowlist
     if hasattr(args, "youtube_allowlist"):
         cfg.youtube_allowlist = args.youtube_allowlist
+    if hasattr(args, "youtube_only"):
+        cfg.youtube_only = bool(args.youtube_only)
     if hasattr(args, "target_hours"):
         cfg.target_hours = args.target_hours
     if hasattr(args, "max_duration_min"):

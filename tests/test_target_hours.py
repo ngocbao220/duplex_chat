@@ -58,6 +58,20 @@ def test_end2end_overrides_target_hours_when_flag_is_passed(monkeypatch):
     assert seen["cfg"].target_hours == 2.0
 
 
+def test_end2end_sets_youtube_only_when_flag_is_passed(monkeypatch):
+    cfg = Config(youtube_only=False)
+    seen = {}
+
+    monkeypatch.setattr(end2end, "load_config", lambda path: cfg)
+    monkeypatch.setattr(end2end, "run_phase", lambda cfg_arg, phase: seen.update({"cfg": cfg_arg, "phase": phase}))
+    monkeypatch.setattr("sys.argv", ["end2end.py", "--youtube-only"])
+
+    end2end.main()
+
+    assert seen["cfg"].youtube_only is True
+    assert seen["phase"] == "end2end"
+
+
 def test_handle_processed_result_skips_write_after_target_reached(monkeypatch):
     writes = []
     cfg = Config(target_hours=1.0, cleanup_audio_cache=False)
