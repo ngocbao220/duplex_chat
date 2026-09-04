@@ -38,7 +38,8 @@ outputs/<tên input>/speaker_B.wav
 `kaggle/inputs/adasdasd/demo1.wav` sẽ ghi vào `outputs/demo1/`.
 
 `run.json` ghi các phase/artifact chính của lần chạy. Hai file WAV là audio đích
-theo từng speaker.
+theo từng speaker. Output single được giữ gọn: chỉ `run.json`, `speaker_A.wav`
+và `speaker_B.wav`; kết quả từng phase nằm trong `run.json` dạng text.
 
 3. Chạy benchmark sau khi đã có hai audio speaker:
 
