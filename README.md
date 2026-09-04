@@ -30,6 +30,9 @@ Output mặc định:
 
 ```text
 outputs/<tên input>/run.json
+outputs/<tên input>/vad.txt
+outputs/<tên input>/diarization.txt
+outputs/<tên input>/separation.txt
 outputs/<tên input>/speaker_A.wav
 outputs/<tên input>/speaker_B.wav
 ```
@@ -37,9 +40,9 @@ outputs/<tên input>/speaker_B.wav
 `<tên input>` là tên file cuối cùng, bỏ phần mở rộng. Ví dụ
 `kaggle/inputs/adasdasd/demo1.wav` sẽ ghi vào `outputs/demo1/`.
 
-`run.json` ghi các phase/artifact chính của lần chạy. Hai file WAV là audio đích
-theo từng speaker. Output single được giữ gọn: chỉ `run.json`, `speaker_A.wav`
-và `speaker_B.wav`; kết quả từng phase nằm trong `run.json` dạng text.
+`run.json` ghi model sử dụng và kết quả từng phase dạng text. Các file TXT dùng
+format Audacity `start<TAB>end<TAB>label`. Hai file WAV là audio đích theo từng
+speaker.
 
 3. Chạy benchmark sau khi đã có hai audio speaker:
 
