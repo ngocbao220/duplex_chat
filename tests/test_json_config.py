@@ -5,15 +5,18 @@ import pytest
 from duplexchat_pipe.config import Config, apply_config_data, apply_overrides, load_config
 
 
-def test_load_config_maps_vi_poc_values(tmp_path: Path):
+def test_load_config_maps_default_project_values(tmp_path: Path):
     config_path = tmp_path / "config.json"
     config_path.write_text(
         """
 {
   "source": {
     "languages": ["vi", "vi-vn"],
-    "feed_allowlist": "sources/vi_allowlist.jsonl",
+    "feed_allowlist": "configs/allowlist.jsonl",
     "target_hours": 10
+  },
+  "metadata": {
+    "language": "vi"
   },
   "runtime": {
     "device": "auto",
@@ -39,7 +42,8 @@ def test_load_config_maps_vi_poc_values(tmp_path: Path):
     cfg = load_config(config_path)
 
     assert cfg.languages == ["vi", "vi-vn"]
-    assert cfg.feed_allowlist == Path("sources/vi_allowlist.jsonl")
+    assert cfg.metadata_language == "vi"
+    assert cfg.feed_allowlist == Path("configs/allowlist.jsonl")
     assert cfg.target_hours == 10
     assert cfg.runtime_device == "auto"
     assert cfg.multi_gpu_enabled is True
@@ -64,7 +68,7 @@ def test_apply_overrides_parses_scalars_lists_and_nulls():
             "runtime.multi_gpu.enabled=true",
             "runtime.multi_gpu.device_ids=[0,1]",
             "source.feed_allowlist=null",
-            "audio.output_dir=data/wds_vi_poc_2h5",
+            "audio.output_dir=data/wds_2h5",
         ],
     )
 
@@ -72,7 +76,7 @@ def test_apply_overrides_parses_scalars_lists_and_nulls():
     assert cfg.multi_gpu_enabled is True
     assert cfg.multi_gpu_device_ids == [0, 1]
     assert cfg.feed_allowlist is None
-    assert cfg.output_dir == Path("data/wds_vi_poc_2h5")
+    assert cfg.output_dir == Path("data/wds_2h5")
 
 
 def test_apply_overrides_supports_backend_profile_shortcuts():

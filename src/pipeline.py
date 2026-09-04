@@ -193,6 +193,10 @@ def _scratch_dir(cfg: Config) -> Path:
     return cfg.cache_dir
 
 
+def _metadata_language(cfg: Config, source_language: str | None) -> str:
+    return str(cfg.metadata_language or source_language or "vi").lower()
+
+
 def _collect_feed_items(
     rss_url: str,
     language: str,
@@ -476,7 +480,7 @@ def _diarize_episode(
                         bitrate_kbps=cfg.mp3_bitrate_kbps,
                     )
                     dlg_audio_bytes = dlg_mp3.read_bytes() if dlg_mp3.exists() else None
-                    meta = _build_dialogue_meta(item, duration, idx, dlg)
+                    meta = _build_dialogue_meta(cfg, item, duration, idx, dlg)
                     diarization_data = {
                         "segments": dlg.segments,
                         "model": cfg.diarization_model,
@@ -508,11 +512,11 @@ def _diarize_episode(
         wav_path.unlink(missing_ok=True)
 
 
-def _build_dialogue_meta(item: AudioItem, duration: float, idx: int, dlg) -> dict:
+def _build_dialogue_meta(cfg: Config, item: AudioItem, duration: float, idx: int, dlg) -> dict:
     return {
         "rss_url": item.rss_url,
         "audio_url": item.audio_url,
-        "language": item.language,
+        "language": _metadata_language(cfg, item.language),
         "episode_duration_sec": duration,
         "dialogue_idx": idx,
         "dialogue_start": dlg.start,
@@ -564,7 +568,7 @@ def _separate_dialogue(
             task.dlg_key, dlg.duration, t_sep, t_enc, task.device,
         )
 
-        meta = _build_dialogue_meta(task.item, task.episode_duration, 0, dlg)
+        meta = _build_dialogue_meta(cfg, task.item, task.episode_duration, 0, dlg)
         meta["dialogue_idx"] = int(task.dlg_key.rsplit("_", 1)[-1])
         meta["separated"] = True
         meta["separation_backend"] = cfg.separation_backend
@@ -610,7 +614,7 @@ def _process_no_diarization(
         meta = {
             "rss_url": downloaded.item.rss_url,
             "audio_url": downloaded.item.audio_url,
-            "language": downloaded.item.language,
+            "language": _metadata_language(cfg, downloaded.item.language),
             "duration_sec": downloaded.duration,
             "feed": downloaded.item.feed_meta,
             "entry": downloaded.item.entry_meta,
@@ -828,8 +832,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         feed_futures: dict = {}
         _submit_feed_futures(feed_iter, feed_futures, rss_pool, cfg, max_pending_feeds)
 
-        feed_pbar = tqdm(total=len(feed_urls), desc="feeds", unit="feed")
-        audio_pbar = tqdm(desc="audio", unit="item")
+        feed_pbar = tqdm(total=len(feed_urls), desc="feeds", unit="feed", leave=False)
+        audio_pbar = tqdm(desc="audio", unit="item", leave=False)
 
         while feed_futures:
             if cfg.target_hours is not None and stats.total_duration_sec / 3600 >= cfg.target_hours:

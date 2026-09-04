@@ -2,14 +2,17 @@
   "source": {
     "feeds_db_url": "https://public.podcastindex.org/podcastindex_feeds.db.tgz",
     "languages": ["vi", "vi-vn"],
-    "feed_allowlist": "sources/vi_allowlist.jsonl",
-    "youtube_allowlist": "sources/vi_youtube_allowlist.jsonl",
+    "feed_allowlist": "configs/allowlist.jsonl",
+    "youtube_allowlist": "configs/youtube_allowlist.jsonl",
     "target_hours": 1,
     "episode_limit_per_feed": null
   },
+  "metadata": {
+    "language": "vi"
+  },
   "audio": {
-    "output_dir": "data/wds_vi_poc",
-    "cache_dir": "data/cache_vi_poc",
+    "output_dir": "data/wds",
+    "cache_dir": "data/cache",
     "sample_rate": 16000,
     "channels": 1,
     "mp3_bitrate_kbps": 128,

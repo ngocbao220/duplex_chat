@@ -15,7 +15,7 @@ from duplexchat_pipe.pipeline import _iter_feed_urls, crawl_and_build_dataset
 def _benchmark_output_dir(cfg: Config) -> Path:
     output_dir = cfg.benchmark_output_dir
     if output_dir == Path("./reports") or output_dir == Path("reports"):
-        return output_dir / (cfg.run_id or "vi_poc")
+        return output_dir / (cfg.run_id or "run")
     return output_dir
 
 
@@ -44,7 +44,7 @@ def collect_sources(cfg: Config) -> None:
 
 
 def _run_progress_steps(description: str, steps: list[tuple[str, Callable[[], None]]]) -> None:
-    with tqdm(total=len(steps), desc=description, unit="phase") as pbar:
+    with tqdm(total=len(steps), desc=description, unit="phase", leave=False) as pbar:
         for label, callback in steps:
             pbar.set_postfix_str(label, refresh=True)
             callback()

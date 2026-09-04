@@ -14,7 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run", help="Run crawl and build WebDataset")
-    run_parser.add_argument("--config", type=Path, default=Path("config.json"), help="JSON config path (default: config.json).")
+    run_parser.add_argument("--config", type=Path, default=Path("configs/config.json"), help="JSON config path (default: configs/config.json).")
     run_parser.add_argument(
         "--phase",
         choices=["collect_sources", "download_clean", "diarize_segment", "separate", "benchmark", "end2end", "run"],

@@ -77,3 +77,33 @@ def test_sepformer_run_uses_adapter():
     assert sr == 16000
     assert torch.equal(spk0, wav)
     assert torch.equal(spk1, wav * 0)
+
+
+def test_dialoguesidon_separation_reports_chunk_progress(monkeypatch):
+    events = []
+
+    def fake_separate_chunk(wav, num_steps, models):
+        return torch.stack([wav.reshape(-1), wav.reshape(-1) * 0], dim=0)
+
+    monkeypatch.setattr(separate, "_separate_chunk", fake_separate_chunk)
+
+    spk0, spk1, sr = separate.run_separation(
+        torch.ones(1, 32000),
+        16000,
+        0,
+        {
+            "backend": "dialoguesidon",
+            "sample_rate": 16000,
+            "device": torch.device("cpu"),
+        },
+        chunk_seconds=1.0,
+        overlap_seconds=0.5,
+        progress_callback=lambda event, value: events.append((event, value)),
+    )
+
+    assert sr == 16000
+    assert spk0.shape[0] == 1
+    assert spk1.shape[0] == 1
+    assert events[0] == ("start", 4)
+    assert events.count(("advance", 1)) == 4
+    assert events[-1] == ("close", 0)

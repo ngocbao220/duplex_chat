@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -39,4 +40,8 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
     assert calls[0][1]["output_dir"] == str(Path("outputs") / "demo1")
     assert calls[0][1]["diarize_chunk"] == 90
     assert calls[0][1]["separate_chunk"] == 90
-    assert (tmp_path / "outputs" / "demo1" / "run.json").exists()
+    run_manifest = json.loads((tmp_path / "outputs" / "demo1" / "run.json").read_text())
+    assert run_manifest["speaker_A"] == str(Path("outputs") / "demo1" / "speaker_A.wav")
+    assert run_manifest["speaker_B"] == str(Path("outputs") / "demo1" / "speaker_B.wav")
+    assert "speakerA" not in run_manifest
+    assert "speakerB" not in run_manifest

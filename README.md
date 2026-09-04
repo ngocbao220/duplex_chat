@@ -5,7 +5,8 @@ thực tế. Pipeline thu thập nguồn audio, chuẩn hóa âm thanh, diarizat
 ai nói lúc nào, tách các đoạn hội thoại hai speaker, chạy speech separation, rồi
 ghi dữ liệu đầu ra kèm artifact để kiểm tra.
 
-Các cấu hình mặc định nằm trong `config.json`. Output chính của pipeline nằm ở
+Các cấu hình nằm trong `configs/`: source, language metadata, diarization model,
+separation model, benchmark model và runtime. Output chính của pipeline nằm ở
 `data/`, `outputs/`, `reports/`, và log theo từng lần chạy nằm trong `logs/`.
 Khi chạy CLI, từng phase có progress bar để theo dõi tiến trình.
 
@@ -29,8 +30,8 @@ Output mặc định:
 
 ```text
 outputs/<tên input>/run.json
-outputs/<tên input>/speakerA.wav
-outputs/<tên input>/speakerB.wav
+outputs/<tên input>/speaker_A.wav
+outputs/<tên input>/speaker_B.wav
 ```
 
 `<tên input>` là tên file cuối cùng, bỏ phần mở rộng. Ví dụ
@@ -43,8 +44,8 @@ theo từng speaker.
 
 ```bash
 uv run python src/benchmark.py --single \
-  --speakerA outputs/<tên input>/speakerA.wav \
-  --speakerB outputs/<tên input>/speakerB.wav \
+  --speakerA outputs/<tên input>/speaker_A.wav \
+  --speakerB outputs/<tên input>/speaker_B.wav \
   --output outputs/<tên input>/benchmark.json
 ```
 
@@ -60,8 +61,8 @@ DNSMOS đang tắt mặc định. Nếu muốn bật DNSMOS, truyền metric và
 
 ```bash
 uv run python src/benchmark.py --single \
-  --speakerA outputs/<tên input>/speakerA.wav \
-  --speakerB outputs/<tên input>/speakerB.wav \
+  --speakerA outputs/<tên input>/speaker_A.wav \
+  --speakerB outputs/<tên input>/speaker_B.wav \
   --output outputs/<tên input>/benchmark.json \
   --metrics dnsmos sq_stoi sq_pesq sq_si_sdr itc itd \
   --dnsmos-model DNSMOS/sig_bak_ovr.onnx

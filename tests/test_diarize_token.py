@@ -51,3 +51,20 @@ def test_parse_sortformer_segments():
         {"speaker": "speaker_1", "start": 1.5, "end": 2.25},
         {"speaker": "speaker_0", "start": 3.0, "end": 4.0},
     ]
+
+
+def test_file_diarization_adapter_reports_progress(tmp_path):
+    class FakeAdapter(diarize.FileDiarizationAdapter):
+        def diarize_file(self, wav_path):
+            return [{"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0}]
+
+    events = []
+
+    segments = diarize.run_diarization(
+        FakeAdapter(),
+        tmp_path / "sample.wav",
+        progress_callback=lambda event, value: events.append((event, value)),
+    )
+
+    assert segments == [{"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0}]
+    assert events == [("start", 1), ("advance", 1), ("close", 0)]

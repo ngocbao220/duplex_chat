@@ -44,6 +44,22 @@ def resolve_output_dir(output_prefix: str, output_dir: str | None = None) -> Pat
     return parent if str(parent) != "." else Path("outputs") / "single_audio"
 
 
+def make_chunk_progress(desc: str, unit: str):
+    pbar = None
+
+    def progress_callback(event: str, value: int) -> None:
+        nonlocal pbar
+        if event == "start":
+            pbar = tqdm(total=value, desc=desc, unit=unit, leave=False)
+        elif event == "advance" and pbar is not None:
+            pbar.update(value)
+        elif event == "close" and pbar is not None:
+            pbar.close()
+            pbar = None
+
+    return progress_callback
+
+
 def run_single_audio(
     audio_path_str,
     diarize_chunk=60.0,
@@ -73,51 +89,61 @@ def run_single_audio(
     )
 
     temp_wav = Path("temp_test_audio.wav")
-    with tqdm(total=5, desc="single pipeline", unit="phase") as phase_pbar:
-        phase_pbar.set_postfix_str("preprocess", refresh=True)
+    with tqdm(total=2, desc="preprocess", unit="step", leave=False) as pbar:
         subprocess.run([
             "ffmpeg", "-y", "-i", str(audio_path),
             "-ar", "16000", "-ac", "1", str(temp_wav)
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        pbar.update(1)
         copy_file(temp_wav, phase_output_dir / "phase_01_preprocess" / "audio_16k_mono.wav")
-        phase_pbar.update(1)
+        pbar.update(1)
 
-        phase_pbar.set_postfix_str("load models", refresh=True)
+    with tqdm(total=2, desc="load models", unit="model", leave=False) as pbar:
         diarize_pipeline = load_diarization_pipeline(
             diarization_model,
             device=device,
             backend=diarization_backend,
         )
+        pbar.update(1)
         sep_models = load_separation_models(
             device=device,
             backend=separation_backend,
             model_id=separation_model,
         )
-        phase_pbar.update(1)
+        pbar.update(1)
 
-        phase_pbar.set_postfix_str("diarization", refresh=True)
-        segments = run_diarization(diarize_pipeline, temp_wav, max_chunk_dur=diarize_chunk)
+    diarization_progress = make_chunk_progress("diarization", "chunk")
+    try:
+        segments = run_diarization(
+            diarize_pipeline,
+            temp_wav,
+            max_chunk_dur=diarize_chunk,
+            progress_callback=diarization_progress,
+        )
+    finally:
+        diarization_progress("close", 0)
+    with tqdm(total=1, desc="write diarization", unit="file", leave=False) as pbar:
         write_diarization_phase(
             phase_output_dir,
             segments,
             model=diarization_model,
             backend=diarization_backend,
         )
-        phase_pbar.update(1)
+        pbar.update(1)
 
-        print(f"Found {len(segments)} diarization segments.")
-        for seg in segments[:5]:
-            print(f"  {seg['speaker']}: {seg['start']:.2f}s - {seg['end']:.2f}s")
-        if len(segments) > 5:
-            print("  ...")
+    print(f"Found {len(segments)} diarization segments.")
+    for seg in segments[:5]:
+        print(f"  {seg['speaker']}: {seg['start']:.2f}s - {seg['end']:.2f}s")
+    if len(segments) > 5:
+        print("  ...")
 
-        phase_pbar.set_postfix_str("separation", refresh=True)
-        if device == "cuda":
-            release_diarization_gpu_memory(diarize_pipeline)
+    if device == "cuda":
+        release_diarization_gpu_memory(diarize_pipeline)
 
-        wav, sr = load_wav_tensor(temp_wav)
-        # Tự động tính overlap_seconds bằng 1/6 của separate_chunk (vd 30s -> 5s)
-        overlap = max(1.0, separate_chunk / 6.0)
+    wav, sr = load_wav_tensor(temp_wav)
+    overlap = max(1.0, separate_chunk / 6.0)
+    separation_progress = make_chunk_progress("separation", "chunk")
+    try:
         spk0, spk1, out_sr = run_separation(
             wav,
             sr,
@@ -125,18 +151,24 @@ def run_single_audio(
             models=sep_models,
             chunk_seconds=separate_chunk,
             overlap_seconds=overlap,
+            progress_callback=separation_progress,
         )
-        phase_pbar.update(1)
+    finally:
+        separation_progress("close", 0)
 
-        phase_pbar.set_postfix_str("save outputs", refresh=True)
+    with tqdm(total=5, desc="save outputs", unit="file", leave=False) as pbar:
         output_path = Path(output_prefix)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         out_A = f"{output_prefix}_A.wav"
         out_B = f"{output_prefix}_B.wav"
         torchaudio.save(out_A, spk0, out_sr)
+        pbar.update(1)
         torchaudio.save(out_B, spk1, out_sr)
+        pbar.update(1)
         save_wav(phase_output_dir / "phase_04_separation" / "speaker_A.wav", spk0, out_sr)
+        pbar.update(1)
         save_wav(phase_output_dir / "phase_04_separation" / "speaker_B.wav", spk1, out_sr)
+        pbar.update(1)
         write_json(
             phase_output_dir / "phase_04_separation" / "separation.json",
             {
@@ -147,7 +179,7 @@ def run_single_audio(
                 "speaker_B": out_B,
             },
         )
-        phase_pbar.update(1)
+        pbar.update(1)
     
     print(f"Done! Saved to:")
     print(f" - {out_A} (Người A)")

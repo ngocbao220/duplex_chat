@@ -20,9 +20,9 @@
 set -euo pipefail
 
 NUM_NODES=64                    # EDIT: must match `#PBS -l select`
-LANG=en                         # EDIT: en or ja
+LANG=vi                         # EDIT: language filter
 PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd)   # repo root; EDIT if submitting elsewhere
-OUTPUT_DIR=${PROJECT_DIR}/data/wds_${LANG}/${PBS_JOBID%%.*}
+OUTPUT_DIR=${PROJECT_DIR}/data/wds/${PBS_JOBID%%.*}
 
 cd "${PROJECT_DIR}"
 # EDIT: put `uv` (and any CUDA libs) on PATH for batch jobs, e.g.:
@@ -40,7 +40,7 @@ mpirun -np ${NUM_NODES} --map-by ppr:1:node --max-restarts 0 bash -c '
 
     uv run duplexchat-pipe run \
         --output "'"${OUTPUT_DIR}"'" \
-        --cache-dir "'"${PROJECT_DIR}"'/data/cache_'"${LANG}"'" \
+        --cache-dir "'"${PROJECT_DIR}"'/data/cache" \
         --languages '"${LANG}"' \
         --rss-workers 16 \
         --download-workers 4 \

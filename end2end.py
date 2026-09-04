@@ -9,7 +9,7 @@ from duplexchat_pipe.runner import run_phase
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run DuplexChat end-to-end pipeline.")
-    parser.add_argument("--config", type=Path, default=Path("config.json"))
+    parser.add_argument("--config", type=Path, default=Path("configs/config.json"))
     parser.add_argument("--target_hours", type=float, default=10.0)
     args = parser.parse_args()
 

@@ -8,7 +8,7 @@ def test_run_parser_accepts_config_phase_and_overrides():
         [
             "run",
             "--config",
-            "config.json",
+            "configs/config.json",
             "--phase",
             "benchmark",
             "source.target_hours=2.5",
@@ -17,6 +17,6 @@ def test_run_parser_accepts_config_phase_and_overrides():
     )
 
     assert args.command == "run"
-    assert args.config == Path("config.json")
+    assert args.config == Path("configs/config.json")
     assert args.phase == "benchmark"
     assert args.overrides == ["source.target_hours=2.5", "separation=mossformer2"]

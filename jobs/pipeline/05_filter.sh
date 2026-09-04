@@ -4,8 +4,8 @@ set -euo pipefail
 PROJECT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 cd "${PROJECT_DIR}"
 
-INPUT=${INPUT:-data/wds_vi_poc}
-OUTPUT=${OUTPUT:-data/wds_vi_poc_filtered}
+INPUT=${INPUT:-data/wds}
+OUTPUT=${OUTPUT:-data/wds_filtered}
 RUN_ID=${RUN_ID:-filter_$(date +%H%M%S)}
 LOG_DIR="logs/$(date +%F)/${RUN_ID}"
 

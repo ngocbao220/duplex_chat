@@ -1,6 +1,6 @@
 # DuplexChat Pipeline Architecture
 
-Tài liệu này mô tả chi tiết các giai đoạn (phases) trong luồng xử lý thu thập, phân tích và trích xuất tập dữ liệu hội thoại song công (Full-duplex spoken-dialogue) từ các podcast nguồn mở. Pipeline được chia thành 6 giai đoạn nối tiếp nhau (tương ứng với các kịch bản trong `jobs/vi/`).
+Tài liệu này mô tả chi tiết các giai đoạn (phases) trong luồng xử lý thu thập, phân tích và trích xuất tập dữ liệu hội thoại song công (Full-duplex spoken-dialogue) từ các podcast nguồn mở. Pipeline được chia thành 6 giai đoạn nối tiếp nhau (tương ứng với các kịch bản trong `jobs/pipeline/`).
 
 ---
 
@@ -39,9 +39,9 @@ Tài liệu này mô tả chi tiết các giai đoạn (phases) trong luồng x�
 ## Phase 5: Filter (`05_filter.sh`)
 - **Mô tả:** Lọc hậu kỳ dữ liệu và loại bỏ trùng lặp. Những đoạn hội thoại có dấu hiệu chứa nhạc nền (music-genre feeds), hoặc thời lượng đoạn cắt chiếm tỷ lệ quá lớn so với tập gốc (thường là lỗi mô hình trên các nội dung độc thoại) sẽ bị loại bỏ.
 - **Input:** 
-  - Dữ liệu WebDataset thô từ Phase 4 (vd: `data/wds_vi_poc`).
+  - Dữ liệu WebDataset thô từ Phase 4 (vd: `data/wds`).
 - **Output:** 
-  - Các tệp WebDataset đã được lọc sạch (vd: `data/wds_vi_poc_filtered`).
+  - Các tệp WebDataset đã được lọc sạch (vd: `data/wds_filtered`).
   - Báo cáo thống kê số lượng dữ liệu bị loại `stats.json`.
 
 ## Phase 6: Benchmark (`06_benchmark.sh`)

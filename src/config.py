@@ -14,7 +14,8 @@ except ModuleNotFoundError:
 @dataclass
 class Config:
     feeds_db_url: str = "https://public.podcastindex.org/podcastindex_feeds.db.tgz"
-    languages: list[str] = field(default_factory=lambda: ["en", "ja"])
+    languages: list[str] = field(default_factory=lambda: ["vi", "vi-vn"])
+    metadata_language: str = "vi"
     feed_allowlist: Path | None = None
     youtube_allowlist: Path | None = None
     target_hours: float | None = None
@@ -80,6 +81,7 @@ class Config:
 FIELD_ALIASES = {
     "source.feeds_db_url": "feeds_db_url",
     "source.languages": "languages",
+    "metadata.language": "metadata_language",
     "source.feed_allowlist": "feed_allowlist",
     "source.youtube_allowlist": "youtube_allowlist",
     "source.target_hours": "target_hours",
@@ -234,7 +236,7 @@ def apply_overrides(cfg: Config, overrides: list[str]) -> Config:
     return apply_config_data(cfg, data)
 
 
-def load_config(path: Path = Path("config.json")) -> Config:
+def load_config(path: Path = Path("configs/config.json")) -> Config:
     with Path(path).open("r", encoding="utf-8") as fp:
         data = json.load(fp)
     return apply_config_data(Config(), data)

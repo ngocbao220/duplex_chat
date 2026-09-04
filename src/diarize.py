@@ -177,18 +177,26 @@ def _parse_sortformer_segment(item: Any) -> dict | None:
 
 
 import numpy as np
+from collections.abc import Callable
 
 def run_diarization(
     pipeline: "Pipeline | FileDiarizationAdapter",
     wav_path: Path,
     max_chunk_dur: float = 60.0,
+    progress_callback: Callable[[str, int], None] | None = None,
 ) -> list[dict]:
     """
     Chạy diarization bằng cách dùng VAD để cắt audio thành các chunk <= max_chunk_dur,
     sau đó so sánh embedding để gán nhãn speaker globally (giúp tránh OOM).
     """
     if isinstance(pipeline, FileDiarizationAdapter):
-        return pipeline.diarize_file(wav_path)
+        if progress_callback is not None:
+            progress_callback("start", 1)
+        segments = pipeline.diarize_file(wav_path)
+        if progress_callback is not None:
+            progress_callback("advance", 1)
+            progress_callback("close", 0)
+        return segments
 
     waveform, sample_rate = load_wav_tensor(wav_path)
     dur_sec = waveform.shape[1] / sample_rate
@@ -220,6 +228,8 @@ def run_diarization(
             curr_start = st
             curr_end = en
     chunks.append((curr_start, curr_end))
+    if progress_callback is not None:
+        progress_callback("start", len(chunks))
     
     # 3. Chạy diarization trên từng chunk & trích xuất embedding
     all_segments = []
@@ -243,6 +253,8 @@ def run_diarization(
             output = pipeline({"waveform": chunk_wav, "sample_rate": sample_rate})
         except Exception as e:
             print(f"Warning: Diarization failed on chunk {s_pad}-{e_pad}: {e}")
+            if progress_callback is not None:
+                progress_callback("advance", 1)
             continue
             
         local_segs = []
@@ -260,6 +272,8 @@ def run_diarization(
             })
             
         if not local_segs:
+            if progress_callback is not None:
+                progress_callback("advance", 1)
             continue
             
         # 4. Gắn speaker globally bằng cách so sánh Cosine Similarity của embedding
@@ -318,9 +332,13 @@ def run_diarization(
                 "start": s["start"] + s_pad,
                 "end": s["end"] + s_pad,
             })
-            
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            
+        if progress_callback is not None:
+            progress_callback("advance", 1)
+
     all_segments.sort(key=lambda x: x["start"])
+    if progress_callback is not None:
+        progress_callback("close", 0)
     return all_segments

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import torch
@@ -315,15 +316,28 @@ def run_separation(
     models: dict,
     chunk_seconds: float = 30.0,
     overlap_seconds: float = 5.0,
+    progress_callback: Callable[[str, int], None] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, int]:
     """Separate a (1, T) mono waveform into two speaker tracks.
 
     Returns (spk0, spk1, out_sr) where each track is a (1, T) CPU float32 tensor.
     """
     if models.get("backend") == "sepformer":
-        return _run_sepformer_separation(wav, sample_rate, models)
+        if progress_callback is not None:
+            progress_callback("start", 1)
+        result = _run_sepformer_separation(wav, sample_rate, models)
+        if progress_callback is not None:
+            progress_callback("advance", 1)
+            progress_callback("close", 0)
+        return result
     if models.get("backend") == "mossformer2":
-        return _run_mossformer2_separation(wav, sample_rate, models)
+        if progress_callback is not None:
+            progress_callback("start", 1)
+        result = _run_mossformer2_separation(wav, sample_rate, models)
+        if progress_callback is not None:
+            progress_callback("advance", 1)
+            progress_callback("close", 0)
+        return result
 
     device = models["device"]
     out_sr: int = models["sample_rate"]
@@ -336,13 +350,19 @@ def run_separation(
     total_samples = wav.shape[-1]
 
     if total_samples <= chunk_samples:
+        if progress_callback is not None:
+            progress_callback("start", 1)
         max_val = wav.abs().max().clamp_min(1e-6)
         wav_norm = torch.nn.functional.pad(0.9 * wav / max_val, (160, 160))
         separated = _separate_chunk(wav_norm, num_steps, models)
+        if progress_callback is not None:
+            progress_callback("advance", 1)
     else:
         overlap_samples_in = int(overlap_seconds * SAMPLE_RATE_IN)
         hop_samples = chunk_samples - overlap_samples_in
         starts = list(range(0, total_samples, hop_samples))
+        if progress_callback is not None:
+            progress_callback("start", len(starts))
         stitched: torch.Tensor | None = None
         prev_end_in = 0
 
@@ -364,6 +384,8 @@ def run_separation(
             if stitched is None:
                 stitched = pred
                 prev_end_in = end
+                if progress_callback is not None:
+                    progress_callback("advance", 1)
                 continue
 
             overlap_in = max(0, prev_end_in - start)
@@ -385,11 +407,15 @@ def run_separation(
             
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            if progress_callback is not None:
+                progress_callback("advance", 1)
 
         separated = stitched  # type: ignore[assignment]
 
     spk0 = separated[0:1].cpu()
     spk1 = separated[1:2].cpu()
+    if progress_callback is not None:
+        progress_callback("close", 0)
     return spk0, spk1, out_sr
 
 

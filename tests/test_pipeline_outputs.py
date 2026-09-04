@@ -7,6 +7,7 @@ from duplexchat_pipe.config import Config
 from duplexchat_pipe.pipeline import (
     AudioItem,
     SeparationTask,
+    _build_dialogue_meta,
     _debug_episode_dir,
     _write_debug_diarization_outputs,
     _write_debug_separation_outputs,
@@ -95,3 +96,18 @@ def test_write_debug_separation_outputs(tmp_path: Path, monkeypatch):
     assert (phase_dir / "speaker_A.wav").read_text() == "(1, 16) 16000"
     assert (phase_dir / "speaker_B.wav").read_text() == "(1, 16) 16000"
     assert "model-id" in (phase_dir / "separation.json").read_text()
+
+
+def test_dialogue_meta_uses_configured_metadata_language():
+    cfg = Config(metadata_language="vi")
+    item = AudioItem("audio", "rss", "vi-vn", {}, {})
+    dialogue = SimpleNamespace(
+        start=0.0,
+        end=12.0,
+        duration=12.0,
+        speakers=["SPEAKER_00", "SPEAKER_01"],
+    )
+
+    meta = _build_dialogue_meta(cfg, item, 60.0, 0, dialogue)
+
+    assert meta["language"] == "vi"
