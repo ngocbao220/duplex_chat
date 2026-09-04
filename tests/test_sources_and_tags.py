@@ -64,16 +64,17 @@ def test_allowlist_parser_loads_structured_youtube_sources(tmp_path: Path):
 
 
 def test_collect_source_items_expands_youtube_records(monkeypatch):
-    def fake_iter_entries(url: str, limit: int | None):
+    def fake_iter_entries(url: str, limit: int | None, target_duration_sec: float | None):
         assert url == "https://youtube.com/playlist?list=abc"
         assert limit == 2
+        assert target_duration_sec == 3600
         return [
             {"id": "v1", "title": "Video 1", "url": "https://youtube.com/watch?v=v1"},
             {"id": "v2", "title": "Video 2", "url": "https://youtube.com/watch?v=v2"},
         ]
 
     monkeypatch.setattr("duplexchat_pipe.pipeline.youtube.iter_entries", fake_iter_entries)
-    cfg = Config(episode_limit_per_feed=2)
+    cfg = Config(episode_limit_per_feed=2, target_hours=1, youtube_only=True)
     record = SourceRecord(
         source_id="show_youtube",
         source_type="youtube",

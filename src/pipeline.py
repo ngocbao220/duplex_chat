@@ -706,6 +706,7 @@ def _collect_source_items(record: sources.SourceRecord, cfg: Config) -> list[Aud
     if record.source_type == "rss":
         return _collect_feed_items(record.url, record.language, cfg)
     if record.source_type == "youtube":
+        target_duration_sec = cfg.target_hours * 3600 if cfg.youtube_only and cfg.target_hours is not None else None
         feed_meta = {
             "source_id": record.source_id,
             "source_type": "youtube",
@@ -723,7 +724,7 @@ def _collect_source_items(record: sources.SourceRecord, cfg: Config) -> list[Aud
                 entry_meta=entry,
                 source_type="youtube",
             )
-            for entry in youtube.iter_entries(record.url, cfg.episode_limit_per_feed)
+            for entry in youtube.iter_entries(record.url, cfg.episode_limit_per_feed, target_duration_sec)
         ]
     raise ValueError(f"Unsupported source_type {record.source_type!r}")
 

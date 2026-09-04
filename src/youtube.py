@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +31,11 @@ def _ytdlp_cmd() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
-def iter_entries(url: str, limit: int | None = None) -> list[dict]:
+def iter_entries(
+    url: str,
+    limit: int | None = None,
+    target_duration_sec: float | None = None,
+) -> list[dict]:
     ensure_ytdlp()
     cmd = [
         *_ytdlp_cmd(),
@@ -44,6 +47,7 @@ def iter_entries(url: str, limit: int | None = None) -> list[dict]:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     entries: list[dict] = []
+    total_duration = 0.0
     for line in result.stdout.splitlines():
         if not line.strip():
             continue
@@ -53,16 +57,24 @@ def iter_entries(url: str, limit: int | None = None) -> list[dict]:
             webpage_url = f"https://www.youtube.com/watch?v={webpage_url}"
         if not webpage_url:
             continue
+        duration = raw.get("duration")
         entries.append(
             {
                 "id": raw.get("id"),
                 "title": raw.get("title"),
                 "url": str(webpage_url),
-                "duration": raw.get("duration"),
+                "duration": duration,
                 "channel": raw.get("channel") or raw.get("uploader"),
             }
         )
+        if duration is not None:
+            try:
+                total_duration += float(duration)
+            except (TypeError, ValueError):
+                pass
         if limit is not None and len(entries) >= limit:
+            break
+        if target_duration_sec is not None and total_duration >= target_duration_sec:
             break
     return entries
 
@@ -82,7 +94,11 @@ def download_audio(url: str, dest_dir: Path, key: str) -> Path:
         url,
     ]
     LOGGER.info("Downloading YouTube audio: %s", url)
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip().splitlines()
+        message = detail[-1] if detail else "yt-dlp failed without output"
+        raise RuntimeError(f"yt-dlp failed for {url}: {message}")
 
     candidates = sorted(
         path for path in dest_dir.glob(f"{key}.*")

@@ -20,6 +20,7 @@ dependencies = [
     "diffusers",
     "huggingface-hub",
     "wrapt>=2.4.0",
+    "yt-dlp>=2026.8.19",
 ]
 
 [project.scripts]

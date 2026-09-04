@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
+from contextlib import contextmanager, redirect_stderr
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,6 +24,13 @@ CHUNK_SECONDS = 30.0
 OVERLAP_SECONDS = 5.0
 
 _cache: dict = {}
+_cache_lock = threading.Lock()
+
+
+@contextmanager
+def _suppress_torch_export_legacy_stderr():
+    with open(os.devnull, "w", encoding="utf-8") as devnull, redirect_stderr(devnull):
+        yield
 
 
 def load_separation_models(
@@ -47,53 +57,55 @@ def _load_dialoguesidon_models(device: str = "cuda", model_id: str | None = None
     repo_id = model_id or REPO_ID
     resolved = device if (device != "cuda" or torch.cuda.is_available()) else "cpu"
     cache_key = ("dialoguesidon", repo_id, resolved)
-    if cache_key in _cache:
-        return _cache[cache_key]
+    with _cache_lock:
+        if cache_key in _cache:
+            return _cache[cache_key]
 
-    paths = {f: hf_hub_download(repo_id=repo_id, filename=f) for f in MODEL_FILES}
+        paths = {f: hf_hub_download(repo_id=repo_id, filename=f) for f in MODEL_FILES}
 
-    with open(paths["metadata.json"]) as fp:
-        meta = json.load(fp)
+        with open(paths["metadata.json"]) as fp:
+            meta = json.load(fp)
 
-    torch_device = torch.device(resolved)
+        torch_device = torch.device(resolved)
 
-    # Enable TF32 for faster float32 matmuls on Ampere+ GPUs
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
+        # Enable TF32 for faster float32 matmuls on Ampere+ GPUs
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
-    ssl_encoder = torch.export.load(paths["ssl_encoder.pt2"]).module().to(torch_device)
-    diffusion_head = torch.export.load(paths["diffusion_head.pt2"]).module().to(torch_device)
-    vae_decoder = torch.export.load(paths["vae_decoder.pt2"]).module().to(torch_device)
+        with _suppress_torch_export_legacy_stderr():
+            ssl_encoder = torch.export.load(paths["ssl_encoder.pt2"]).module().to(torch_device)
+            diffusion_head = torch.export.load(paths["diffusion_head.pt2"]).module().to(torch_device)
+            vae_decoder = torch.export.load(paths["vae_decoder.pt2"]).module().to(torch_device)
 
-    latent_norm_mean = torch.tensor(
-        meta["latent_norm_mean"], dtype=torch.float32, device=torch_device
-    ).view(1, 1, -1)
-    latent_norm_std = torch.tensor(
-        meta["latent_norm_std"], dtype=torch.float32, device=torch_device
-    ).view(1, 1, -1)
+        latent_norm_mean = torch.tensor(
+            meta["latent_norm_mean"], dtype=torch.float32, device=torch_device
+        ).view(1, 1, -1)
+        latent_norm_std = torch.tensor(
+            meta["latent_norm_std"], dtype=torch.float32, device=torch_device
+        ).view(1, 1, -1)
 
-    scheduler = DPMSolverMultistepScheduler.from_config(
-        meta["ddpm_config"],
-        algorithm_type="dpmsolver++",
-        timestep_spacing="linspace",
-    )
+        scheduler = DPMSolverMultistepScheduler.from_config(
+            meta["ddpm_config"],
+            algorithm_type="dpmsolver++",
+            timestep_spacing="linspace",
+        )
 
-    models = {
-        "ssl_encoder": ssl_encoder,
-        "diffusion_head": diffusion_head,
-        "vae_decoder": vae_decoder,
-        "latent_norm_mean": latent_norm_mean,
-        "latent_norm_std": latent_norm_std,
-        "latent_norm_initialized": meta["latent_norm_initialized"],
-        "scheduler": scheduler,
-        "latent_dim": meta["latent_dim"],
-        "sample_rate": meta["sample_rate"],
-        "device": torch_device,
-        "backend": "dialoguesidon",
-        "model_id": repo_id,
-    }
-    _cache[cache_key] = models
-    return models
+        models = {
+            "ssl_encoder": ssl_encoder,
+            "diffusion_head": diffusion_head,
+            "vae_decoder": vae_decoder,
+            "latent_norm_mean": latent_norm_mean,
+            "latent_norm_std": latent_norm_std,
+            "latent_norm_initialized": meta["latent_norm_initialized"],
+            "scheduler": scheduler,
+            "latent_dim": meta["latent_dim"],
+            "sample_rate": meta["sample_rate"],
+            "device": torch_device,
+            "backend": "dialoguesidon",
+            "model_id": repo_id,
+        }
+        _cache[cache_key] = models
+        return models
 
 
 def _load_mossformer2_models(device: str = "cuda", model_id: str | None = None) -> dict:
