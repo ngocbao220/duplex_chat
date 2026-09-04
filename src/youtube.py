@@ -57,7 +57,11 @@ def iter_entries(
         "--no-warnings",
         url,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"yt-dlp failed to fetch playlist/entries. Error:\n{exc.stderr}") from exc
+        
     entries: list[dict] = []
     total_duration = 0.0
     for line in result.stdout.splitlines():
