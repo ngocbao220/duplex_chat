@@ -8,6 +8,7 @@ from pathlib import Path
 import torchaudio
 
 from duplexchat_pipe.outputs import write_label_file
+from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
 from test_single import run_single_audio
 
 
@@ -96,6 +97,7 @@ def _write_single_label_files(temp_output_dir: Path, output_dir: Path, speaker_a
 
 
 def main() -> None:
+    suppress_pyannote_tf32_warning()
     parser = argparse.ArgumentParser(description="Debug DuplexChat on one local audio sample.")
     parser.add_argument("--input", required=True, help="Input audio path.")
     parser.add_argument("--output-dir", type=Path, default=None)

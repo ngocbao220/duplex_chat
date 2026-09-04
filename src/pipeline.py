@@ -193,6 +193,10 @@ def _scratch_dir(cfg: Config) -> Path:
     return cfg.cache_dir
 
 
+def _target_hours_reached(cfg: Config, stats: Stats) -> bool:
+    return cfg.target_hours is not None and stats.total_duration_sec / 3600 >= cfg.target_hours
+
+
 def _metadata_language(cfg: Config, source_language: str | None) -> str:
     return str(cfg.metadata_language or source_language or "vi").lower()
 
@@ -661,8 +665,11 @@ def _submit_feed_futures(
     rss_pool: ThreadPoolExecutor,
     cfg: Config,
     max_pending_feeds: int,
+    stats: Stats | None = None,
 ) -> None:
     while len(feed_futures) < max_pending_feeds:
+        if stats is not None and _target_hours_reached(cfg, stats):
+            break
         try:
             rss_url, lang = next(feed_iter)
         except StopIteration:
@@ -760,6 +767,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         for future in done:
             result = future.result()
             _handle_processed_result(result, cfg, writer, processed_db, audio_pbar, stats)
+            if _target_hours_reached(cfg, stats):
+                break
 
     def _drain_diarizations() -> None:
         """Drain completed diarize futures → feed separation pool."""
@@ -787,8 +796,14 @@ def crawl_and_build_dataset(cfg: Config) -> None:
             # accumulate in memory.
             sep_buffer_limit = max(1, cfg.separation_workers) * TASK_BUFFER_MULTIPLIER
             for task in dr.separation_tasks:
+                if _target_hours_reached(cfg, stats):
+                    break
                 while len(pending_separate) >= sep_buffer_limit:
                     _drain_separations()
+                    if _target_hours_reached(cfg, stats):
+                        break
+                if _target_hours_reached(cfg, stats):
+                    break
                 sep_future = separate_pool.submit(
                     _separate_dialogue, task, separation_models, separation_lock,
                 )
@@ -797,6 +812,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
             # Handle direct results (non-separation path)
             for result in dr.results:
                 _handle_processed_result(result, cfg, writer, processed_db, audio_pbar, stats)
+                if _target_hours_reached(cfg, stats):
+                    break
 
             # Episode marker
             processed_db.mark(dr.episode_key, "ok")
@@ -811,6 +828,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         pending_downloads.clear()
         pending_downloads.update(remaining)
         for future in done:
+            if _target_hours_reached(cfg, stats):
+                break
             result = future.result()
             if isinstance(result, ProcessedResult):
                 _handle_processed_result(result, cfg, writer, processed_db, audio_pbar, stats)
@@ -830,13 +849,13 @@ def crawl_and_build_dataset(cfg: Config) -> None:
         max_pending_feeds = max(1, cfg.rss_workers) * FEED_FUTURE_BUFFER_MULTIPLIER
         feed_iter = iter(feed_urls)
         feed_futures: dict = {}
-        _submit_feed_futures(feed_iter, feed_futures, rss_pool, cfg, max_pending_feeds)
+        _submit_feed_futures(feed_iter, feed_futures, rss_pool, cfg, max_pending_feeds, stats)
 
         feed_pbar = tqdm(total=len(feed_urls), desc="feeds", unit="feed", leave=False)
         audio_pbar = tqdm(desc="audio", unit="item", leave=False)
 
         while feed_futures:
-            if cfg.target_hours is not None and stats.total_duration_sec / 3600 >= cfg.target_hours:
+            if _target_hours_reached(cfg, stats):
                 LOGGER.info("target_hours %.2f reached; stopping feed submission", cfg.target_hours)
                 break
             done_feeds, _ = wait(set(feed_futures), return_when=FIRST_COMPLETED)
@@ -850,6 +869,8 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                     continue
 
                 for item in items:
+                    if _target_hours_reached(cfg, stats):
+                        break
                     norm_url = rss.normalize_url(item.audio_url)
                     key = _hash_url(norm_url)
                     if key in seen_hashes:
@@ -871,7 +892,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                     if len(pending_separate) >= max(1, cfg.separation_workers) * TASK_BUFFER_MULTIPLIER:
                         _drain_separations()
 
-            _submit_feed_futures(feed_iter, feed_futures, rss_pool, cfg, max_pending_feeds)
+            _submit_feed_futures(feed_iter, feed_futures, rss_pool, cfg, max_pending_feeds, stats)
 
         # Drain remaining work
         while pending_downloads or pending_diarize or pending_separate:
@@ -881,7 +902,7 @@ def crawl_and_build_dataset(cfg: Config) -> None:
                 _drain_diarizations()
             if pending_separate:
                 _drain_separations()
-            if cfg.target_hours is not None and stats.total_duration_sec / 3600 >= cfg.target_hours:
+            if _target_hours_reached(cfg, stats):
                 LOGGER.info("target_hours %.2f reached; cancelling remaining work", cfg.target_hours)
                 break
     except KeyboardInterrupt:
@@ -943,6 +964,16 @@ def _handle_processed_result(
     audio_pbar.update(1)
 
     if result.status == "ok":
+        if _target_hours_reached(cfg, stats):
+            if cfg.cleanup_audio_cache and result.raw_path is not None:
+                result.raw_path.unlink(missing_ok=True)
+            stats.skipped += 1
+            audio_pbar.set_postfix_str(
+                f"hours={stats.total_duration_sec / 3600:.2f} "
+                f"ok={stats.written} skip={stats.skipped} err={stats.errors}",
+                refresh=True,
+            )
+            return
         wds.write_sample(
             writer, result.key, result.audio_bytes,
             result.meta or {}, result.diarization, result.diarization_error,

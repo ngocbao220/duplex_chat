@@ -6,6 +6,7 @@ from pathlib import Path
 
 from duplexchat_pipe.config import apply_overrides, load_config
 from duplexchat_pipe.model_options import DIARIZATION_MODELS, SEPARATION_MODELS, resolve_model_alias
+from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
 from duplexchat_pipe.runner import run_phase
 
 
@@ -202,6 +203,7 @@ def _apply_run_args(cfg, args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    suppress_pyannote_tf32_warning()
     parser = build_parser()
     args = parser.parse_args()
 
