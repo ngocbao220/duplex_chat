@@ -30,6 +30,7 @@ OBJECTIVE_METRICS = ("sq_stoi", "sq_pesq", "sq_si_sdr")
 SUBJECTIVE_METRICS = ("squim_mos",)
 EMBEDDING_METRICS = ("itc", "itd")
 METRIC_NAMES = (*DNSMOS_METRICS, *SUBJECTIVE_METRICS, *OBJECTIVE_METRICS, *EMBEDDING_METRICS)
+DEFAULT_METRIC_NAMES = (*SUBJECTIVE_METRICS, *OBJECTIVE_METRICS, *EMBEDDING_METRICS)
 QUALITY_TABLE_COLUMNS = [
     "key",
     "duration_sec",
@@ -749,7 +750,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="auto", help="Benchmark device: auto, cpu, cuda, cuda:N.")
     parser.add_argument("--reference", type=Path, default=None, help="Non-matching clean reference WAV for SQUIM subjective MOS.")
     parser.add_argument("--dnsmos-model", type=Path, default=None, help="Path to Microsoft DNSMOS sig_bak_ovr.onnx.")
-    parser.add_argument("--metrics", nargs="+", default=list(METRIC_NAMES), help="Metrics to compute.")
+    parser.add_argument(
+        "--metrics",
+        nargs="+",
+        default=list(DEFAULT_METRIC_NAMES),
+        help="Metrics to compute. DNSMOS is supported but disabled by default.",
+    )
     return parser
 
 

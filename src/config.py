@@ -61,7 +61,6 @@ class Config:
     separation_workers: int = 2
     benchmark_enabled: bool = False
     benchmark_metrics: list[str] = field(default_factory=lambda: [
-        "dnsmos",
         "squim_mos",
         "sq_stoi",
         "sq_pesq",

@@ -170,6 +170,7 @@ def test_benchmark_writes_squim_and_track_metrics(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(benchmark, "EmbeddingScorer", lambda cfg: FakeEmbeddingScorer())
 
     cfg = Config(
+        benchmark_metrics=list(benchmark.METRIC_NAMES),
         benchmark_squim_subjective_enabled=True,
         benchmark_squim_subjective_reference_path=tmp_path / "reference.wav",
         benchmark_output_dir=tmp_path / "reports",
@@ -266,6 +267,13 @@ def test_single_speaker_cli_writes_benchmark_json(monkeypatch, tmp_path: Path):
     assert row["sq_stoi_mean"] == 0.85
     assert out_json.with_suffix(".metrics.md").exists()
     assert out_json.with_suffix(".turn_taking.md").exists()
+
+
+def test_single_cli_default_metrics_exclude_dnsmos():
+    args = benchmark._build_parser().parse_args(["--single"])
+
+    assert "dnsmos" not in args.metrics
+    assert "sq_stoi" in args.metrics
 
 
 def test_compute_turn_taking_stats_from_stereo_activity():

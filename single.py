@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+from pathlib import Path
+
+from test_single import run_single_audio
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Debug DuplexChat on one local audio sample.")
+    parser.add_argument("--input", required=True, help="Input audio path.")
+    parser.add_argument("--output-dir", type=Path, default=None)
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    output_dir = args.output_dir or Path("outputs") / input_path.stem
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_prefix = output_dir / "speaker"
+
+    run_single_audio(
+        args.input,
+        output_prefix=str(output_prefix),
+        output_dir=str(output_dir),
+    )
+
+    speaker_a = output_dir / "speaker_A.wav"
+    speaker_b = output_dir / "speaker_B.wav"
+    public_speaker_a = output_dir / "speakerA.wav"
+    public_speaker_b = output_dir / "speakerB.wav"
+    if speaker_a.exists():
+        shutil.copyfile(speaker_a, public_speaker_a)
+    if speaker_b.exists():
+        shutil.copyfile(speaker_b, public_speaker_b)
+
+    run_manifest = {
+        "input": args.input,
+        "output_dir": str(output_dir),
+        "speakerA": str(public_speaker_a),
+        "speakerB": str(public_speaker_b),
+        "phases": {
+            "input": str(output_dir / "phase_00_input" / "input.json"),
+            "preprocess": str(output_dir / "phase_01_preprocess" / "audio_16k_mono.wav"),
+            "diarization": str(output_dir / "phase_02_diarization" / "diarization.json"),
+            "separation": str(output_dir / "phase_04_separation" / "separation.json"),
+        },
+    }
+    (output_dir / "run.json").write_text(
+        json.dumps(run_manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+if __name__ == "__main__":
+    main()
