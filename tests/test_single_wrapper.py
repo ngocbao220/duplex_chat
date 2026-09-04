@@ -21,9 +21,22 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
 
     monkeypatch.setattr(single, "run_single_audio", fake_run_single_audio)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["single.py", "--input", str(input_path)])
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "single.py",
+            "--input",
+            str(input_path),
+            "--diarize-chunk",
+            "90",
+            "--separate-chunk",
+            "90",
+        ],
+    )
 
     single.main()
 
     assert calls[0][1]["output_dir"] == str(Path("outputs") / "demo1")
+    assert calls[0][1]["diarize_chunk"] == 90
+    assert calls[0][1]["separate_chunk"] == 90
     assert (tmp_path / "outputs" / "demo1" / "run.json").exists()

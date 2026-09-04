@@ -12,6 +12,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Debug DuplexChat on one local audio sample.")
     parser.add_argument("--input", required=True, help="Input audio path.")
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--diarize-chunk", type=float, default=60.0)
+    parser.add_argument("--separate-chunk", type=float, default=30.0)
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -21,6 +23,8 @@ def main() -> None:
 
     run_single_audio(
         args.input,
+        diarize_chunk=args.diarize_chunk,
+        separate_chunk=args.separate_chunk,
         output_prefix=str(output_prefix),
         output_dir=str(output_dir),
     )

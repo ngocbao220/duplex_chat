@@ -20,7 +20,9 @@ uv run python end2end.py --target_hours 10
 2. Chạy 1 sample để debug pipeline:
 
 ```bash
-uv run python single.py --input inputs/sample.wav
+uv run python single.py --input inputs/sample.wav \
+  --diarize-chunk 90 \
+  --separate-chunk 90
 ```
 
 Output mặc định:
