@@ -976,6 +976,9 @@ benchmark = [
     { name = "onnxruntime" },
     { name = "speechbrain" },
 ]
+cholimex = [
+    { name = "speechbrain" },
+]
 dev = [
     { name = "pytest" },
 ]
@@ -1011,6 +1014,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "requests" },
     { name = "speechbrain", marker = "extra == 'benchmark'" },
+    { name = "speechbrain", marker = "extra == 'cholimex'" },
     { name = "speechbrain", marker = "extra == 'separation-sepformer'" },
     { name = "torch" },
     { name = "torchaudio" },
@@ -1020,7 +1024,7 @@ requires-dist = [
     { name = "wrapt", specifier = ">=2.4.0" },
     { name = "yt-dlp", specifier = ">=2026.8.19" },
 ]
-provides-extras = ["dev", "diarization-pyannote", "diarization-sortformer", "separation-dialoguesidon", "separation-sepformer", "benchmark"]
+provides-extras = ["dev", "cholimex", "diarization-pyannote", "diarization-sortformer", "separation-dialoguesidon", "separation-sepformer", "benchmark"]
 
 [[package]]
 name = "einops"

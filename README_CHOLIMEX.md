@@ -38,10 +38,19 @@ single-speaker audio được lấy trực tiếp từ original waveform.
 
 ## Quick Start
 
+Cholimex cần SpeechBrain cho bước speaker embedding ở các vùng overlap. Cài
+extra này một lần trong môi trường đang dùng:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv sync --extra cholimex
+```
+
+Hoặc chạy trực tiếp qua `uv run --extra cholimex`.
+
 Chạy trên một file audio:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
+UV_CACHE_DIR=.uv-cache uv run --extra cholimex duplexchat-pipe cholimex \
   --input path/to/input.wav \
   --output-dir outputs/cholimex/input_name \
   cholimex.overlap_padding=0.1
@@ -50,7 +59,7 @@ UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
 Ví dụ với sample trong sibling Vilier checkout:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
+UV_CACHE_DIR=.uv-cache uv run --extra cholimex duplexchat-pipe cholimex \
   --input ../vilier/inputs/samples/easy_1.wav \
   --output-dir outputs/cholimex/easy_1 \
   cholimex.overlap_padding=0.1
@@ -59,7 +68,7 @@ UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
 Ép CPU:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
+UV_CACHE_DIR=.uv-cache uv run --extra cholimex duplexchat-pipe cholimex \
   --input path/to/input.wav \
   --output-dir outputs/cholimex/input_name \
   --runtime-device cpu
@@ -68,7 +77,7 @@ UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
 Trên Kaggle, dùng path tuyệt đối hoặc path đúng trong `/kaggle/working`:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
+UV_CACHE_DIR=.uv-cache uv run --extra cholimex duplexchat-pipe cholimex \
   --input /kaggle/working/duplex_chat/easy_1.wav \
   --output-dir outputs/cholimex/easy_1 \
   cholimex.overlap_padding=0.1
@@ -171,7 +180,7 @@ override bằng dotted `key=value`:
 Ví dụ override:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run duplexchat-pipe cholimex \
+UV_CACHE_DIR=.uv-cache uv run --extra cholimex duplexchat-pipe cholimex \
   --input input.wav \
   --output-dir outputs/cholimex/input \
   cholimex.backchannel_max_duration=0.8 \
@@ -219,6 +228,8 @@ Reuse ý tưởng từ Sommelier:
 
 - Input path sai: `ffmpeg` sẽ fail khi không mở được file. Kiểm tra bằng
   `ls -l path/to/input.wav`.
+- Thiếu SpeechBrain: chạy `UV_CACHE_DIR=.uv-cache uv sync --extra cholimex`
+  hoặc dùng `uv run --extra cholimex ...`.
 - Model/token chưa sẵn sàng: DialogueSidon hoặc SpeechBrain có thể cần tải model
   từ Hugging Face.
 - Không có reference non-overlap đủ dài: speaker assignment fallback về thứ tự

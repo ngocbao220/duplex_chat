@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import builtins
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ from duplexchat_pipe.cholimex.pipeline import _align_proposal_track, run_cholime
 from duplexchat_pipe.cholimex.models import ActivitySegment, Region
 from duplexchat_pipe.cholimex.reconstruction import reconstruct_tracks
 from duplexchat_pipe.cholimex.region_classifier import classify_regions
+from duplexchat_pipe.cholimex.speaker_assignment import SpeechBrainEmbeddingExtractor
 from duplexchat_pipe.cholimex.vad_masking import write_vad_artifacts
 from duplexchat_pipe.config import Config, apply_overrides
 
@@ -37,6 +40,12 @@ def test_cholimex_config_overrides():
     assert cfg.cholimex_overlap_padding == 0.25
     assert cfg.cholimex_min_vad_duration == 0.0
     assert cfg.cholimex_proposal_backend == "dialoguesidon"
+
+
+def test_cholimex_extra_installs_speechbrain():
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+
+    assert "speechbrain" in pyproject["project"]["optional-dependencies"]["cholimex"]
 
 
 def test_cholimex_cli_dispatches_single_audio_runner(monkeypatch, tmp_path: Path):
@@ -130,6 +139,20 @@ def test_cholimex_rejects_missing_input_before_transcode(monkeypatch, tmp_path: 
         assert str(missing_input) in str(exc)
     else:
         raise AssertionError("missing input should raise FileNotFoundError")
+
+
+def test_cholimex_speaker_embedding_reports_missing_speechbrain(monkeypatch):
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.startswith("speechbrain"):
+            raise ModuleNotFoundError("No module named 'speechbrain'", name="speechbrain")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError, match=r"uv sync --extra cholimex"):
+        SpeechBrainEmbeddingExtractor("speechbrain/spkrec-ecapa-voxceleb", device="cpu")
 
 
 def test_cholimex_aligns_proposal_tracks_to_original_length():

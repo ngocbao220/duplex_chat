@@ -28,6 +28,7 @@ duplexchat-pipe = "duplexchat_pipe.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+cholimex = ["speechbrain"]
 diarization-pyannote = ["pyannote.audio>=3.1"]
 diarization-sortformer = [
     "Cython",

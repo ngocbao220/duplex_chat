@@ -16,10 +16,7 @@ class EmbeddingExtractor(Protocol):
 
 class SpeechBrainEmbeddingExtractor:
     def __init__(self, model_id: str, device: str = "cpu") -> None:
-        try:
-            from speechbrain.inference.speaker import EncoderClassifier
-        except ModuleNotFoundError:
-            from speechbrain.inference.classifiers import EncoderClassifier
+        EncoderClassifier = _load_encoder_classifier()
 
         self.device = device
         self.sample_rate = 16000
@@ -93,3 +90,31 @@ def assign_candidates(
 
 def _score(left: torch.Tensor, right: torch.Tensor) -> float:
     return float(F.cosine_similarity(left.reshape(-1), right.reshape(-1), dim=0))
+
+
+def _load_encoder_classifier():
+    try:
+        from speechbrain.inference.speaker import EncoderClassifier
+
+        return EncoderClassifier
+    except ModuleNotFoundError as exc:
+        if not _is_speechbrain_import_error(exc):
+            raise
+
+    try:
+        from speechbrain.inference.classifiers import EncoderClassifier
+
+        return EncoderClassifier
+    except ModuleNotFoundError as exc:
+        if not _is_speechbrain_import_error(exc):
+            raise
+        raise RuntimeError(
+            "Cholimex overlap speaker assignment requires a compatible speechbrain install. "
+            "Run with `uv run --extra cholimex duplexchat-pipe cholimex ...`, "
+            "install it with `uv sync --extra cholimex`, or use `uv pip install speechbrain` "
+            "in the active environment."
+        ) from exc
+
+
+def _is_speechbrain_import_error(exc: ModuleNotFoundError) -> bool:
+    return exc.name is not None and (exc.name == "speechbrain" or exc.name.startswith("speechbrain."))
