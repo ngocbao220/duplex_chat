@@ -5,6 +5,8 @@
     "feed_allowlist": "configs/allowlist.jsonl",
     "youtube_allowlist": "configs/youtube_allowlist.json",
     "youtube_only": false,
+    "youtube_cookies": null,
+    "youtube_cookies_from_browser": null,
     "target_hours": 1,
     "episode_limit_per_feed": null
   },

@@ -26,9 +26,21 @@ def ensure_ytdlp() -> None:
 
 
 def _ytdlp_cmd() -> list[str]:
+    import os
     if shutil.which("yt-dlp"):
-        return ["yt-dlp"]
-    return [sys.executable, "-m", "yt_dlp"]
+        cmd = ["yt-dlp"]
+    else:
+        cmd = [sys.executable, "-m", "yt_dlp"]
+    
+    cookies_browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER")
+    if cookies_browser:
+        cmd.extend(["--cookies-from-browser", cookies_browser])
+        
+    cookies_file = os.environ.get("YTDLP_COOKIES")
+    if cookies_file:
+        cmd.extend(["--cookies", cookies_file])
+        
+    return cmd
 
 
 def iter_entries(

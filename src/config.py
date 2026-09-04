@@ -19,6 +19,8 @@ class Config:
     feed_allowlist: Path | None = None
     youtube_allowlist: Path | None = None
     youtube_only: bool = False
+    youtube_cookies: Path | None = None
+    youtube_cookies_from_browser: str | None = None
     target_hours: float | None = None
     output_dir: Path = Path("./data/wds")
     cache_dir: Path = Path("./data/cache")
@@ -86,6 +88,8 @@ FIELD_ALIASES = {
     "source.feed_allowlist": "feed_allowlist",
     "source.youtube_allowlist": "youtube_allowlist",
     "source.youtube_only": "youtube_only",
+    "source.youtube_cookies": "youtube_cookies",
+    "source.youtube_cookies_from_browser": "youtube_cookies_from_browser",
     "source.target_hours": "target_hours",
     "source.episode_limit_per_feed": "episode_limit_per_feed",
     "audio.output_dir": "output_dir",
@@ -138,6 +142,7 @@ FIELD_ALIASES = {
 PATH_FIELDS = {
     "feed_allowlist",
     "youtube_allowlist",
+    "youtube_cookies",
     "output_dir",
     "cache_dir",
     "log_root",
