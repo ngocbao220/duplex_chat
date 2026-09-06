@@ -12,6 +12,29 @@ Khi chạy CLI, từng phase có progress bar để theo dõi tiến trình.
 
 ## So sánh Cholimex, DuplexChat và Vilier
 
+## Branch `duplex_chat`
+
+Branch này mặc định chạy DuplexChat cho OtoSpeech khi không truyền `--pipeline`.
+
+Chạy một input local bằng DuplexChat:
+
+```bash
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python single.py \
+  --input /absolute/path/to/input.wav \
+  --output-dir outputs/duplex_chat/input_name
+```
+
+Chạy OtoSpeech với logic chuẩn bị mixture/ground truth giống Cholimex, nhưng
+worker inference là DuplexChat:
+
+```bash
+MPLBACKEND=Agg uv run python end2end.py \
+  --data oto-speech \
+  --size_gb 1
+```
+
+Thêm `--pipeline duplexchat` chỉ để ghi rõ lựa chọn; không bắt buộc trên branch này.
+
 Chọn branch theo mục đích trước khi chạy. Hiện repository có ba branch công việc:
 
 | Branch | Dùng khi | Lệnh bắt đầu |

@@ -74,7 +74,7 @@ def test_end2end_sets_youtube_only_when_flag_is_passed(monkeypatch):
     assert seen["phase"] == "end2end"
 
 
-def test_end2end_otospeech_defaults_to_cholimex(monkeypatch):
+def test_end2end_otospeech_defaults_to_duplexchat_on_duplex_chat_branch(monkeypatch):
     import pytest
     seen = {}
     monkeypatch.setattr(end2end, "load_config", lambda path: Config())
@@ -83,7 +83,7 @@ def test_end2end_otospeech_defaults_to_cholimex(monkeypatch):
     with pytest.raises(SystemExit) as result:
         end2end.main()
     assert result.value.code == 0
-    assert seen == {"pipeline": "cholimex", "size": 1}
+    assert seen == {"pipeline": "duplexchat", "size": 1}
 
 
 def test_end2end_rejects_pipeline_for_crawl(monkeypatch):
