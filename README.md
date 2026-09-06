@@ -12,15 +12,31 @@ Khi chạy CLI, từng phase có progress bar để theo dõi tiến trình.
 
 ## So sánh Cholimex, DuplexChat và Vilier
 
-Repo chứa cả ba pipeline. Các branch `cholimex`, `duplexchat`, `vilier` cùng có
-runner chung; `--pipeline` quyết định implementation được chạy, không phụ thuộc
-branch đang checkout. Branch `master` cũ được giữ làm mốc lịch sử.
+Chọn branch theo mục đích trước khi chạy. Hiện repository có ba branch công việc:
+
+| Branch | Dùng khi | Lệnh bắt đầu |
+| --- | --- | --- |
+| `benchmark-pipelines` | Chạy và so sánh Cholimex, DuplexChat, Vilier trên cùng OtoSpeech mixture. | `git switch benchmark-pipelines` |
+| `cholimex` | Chạy pipeline Cholimex độc lập trên một file audio. | `git switch cholimex` |
+| `master` | Chạy DuplexChat crawl/YouTube gốc. Không có runner so sánh ba pipeline. | `git switch master` |
+
+Không có branch Git riêng tên `duplexchat` hoặc `vilier`: trên
+`benchmark-pipelines`, hai runtime này nằm trong `pipelines/duplexchat/` và
+`pipelines/vilier/` để giữ dependency độc lập. Các lệnh dưới đây trong mục này
+chỉ áp dụng khi đang ở `benchmark-pipelines`.
+
+### `benchmark-pipelines`: so sánh ba pipeline
 
 ```bash
-MPLBACKEND=Agg uv run python end2end.py --pipeline cholimex --data oto-speech --size_gb 1
-MPLBACKEND=Agg uv run python end2end.py --pipeline duplexchat --data oto-speech --size_gb 1
-MPLBACKEND=Agg uv run python end2end.py --pipeline vilier --data oto-speech --size_gb 1
-MPLBACKEND=Agg uv run python end2end.py --pipeline all --data oto-speech --size_gb 1
+git switch benchmark-pipelines
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python end2end.py \
+  --pipeline cholimex --data oto-speech --size_gb 1
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python end2end.py \
+  --pipeline duplexchat --data oto-speech --size_gb 1
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python end2end.py \
+  --pipeline vilier --data oto-speech --size_gb 1
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python end2end.py \
+  --pipeline all --data oto-speech --size_gb 1
 ```
 
 Trong notebook, thêm `!` trước lệnh. `--pipeline` hiện chỉ áp dụng cho OtoSpeech;
@@ -29,16 +45,47 @@ không truyền option này khi dùng luồng crawl. OtoSpeech mặc định dù
 môi trường Python. Download và tạo mixture chỉ diễn ra một lần cho mỗi lượt;
 `all` chạy tuần tự Cholimex → DuplexChat → Vilier trên cùng các mixture.
 
-Chạy smoke nhỏ trước:
+Smoke wiring cho Cholimex hoặc DuplexChat có thể giới hạn một sample/10 giây:
 
 ```bash
-MPLBACKEND=Agg uv run python end2end.py --pipeline all --data oto-speech \
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg uv run python end2end.py --pipeline cholimex --data oto-speech \
   --size_gb 1 --max-samples 1 --max-seconds 10
 ```
+
+Không dùng một đoạn cắt ngắn làm tiêu chí pass cho `--pipeline all`: Vilier sẽ
+đúng đắn báo lỗi nếu diarization chỉ tìm được một speaker. Để benchmark ba
+pipeline, dùng sample có hoạt động của cả hai speaker và không truyền
+`--max-seconds`; `--max-samples 1` vẫn giới hạn chi phí theo số sample.
 
 `--max-seconds` cắt mixture và giới hạn vùng chấm điểm; hai file GT vẫn giữ
 nguyên bản. Dùng `--otospeech-root /path/to/snapshot` để dùng dataset có sẵn,
 không tải lại. Pipeline cần FFmpeg và quyền truy cập các model đã cấu hình.
+
+### `cholimex`: chạy một file độc lập
+
+```bash
+git switch cholimex
+UV_CACHE_DIR=.uv-cache uv sync --extra cholimex
+UV_CACHE_DIR=.uv-cache uv run --extra cholimex duplexchat-pipe cholimex \
+  --input /absolute/path/to/input.wav \
+  --output-dir outputs/cholimex/input_name \
+  cholimex.overlap_padding=0.1
+```
+
+Xem [README_CHOLIMEX.md](README_CHOLIMEX.md) để biết artifact debug và override
+model/device. Lệnh này không chạy runner benchmark ba pipeline.
+
+### `master`: crawl/YouTube DuplexChat gốc
+
+```bash
+git switch master
+UV_CACHE_DIR=.uv-cache uv run python end2end.py --target_hours 10
+UV_CACHE_DIR=.uv-cache uv run --with yt-dlp python end2end.py \
+  --youtube-only --target_hours 1
+```
+
+`master` không có `--pipeline` hoặc thư mục `pipelines/`; quay lại
+`benchmark-pipelines` khi cần report so sánh.
 
 Mỗi pipeline có project, lockfile và `.venv` riêng trong `pipelines/`; runner
 sử dụng `uv run --locked`, tự đồng bộ môi trường khi cần. Vilier còn có worker
