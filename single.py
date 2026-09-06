@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torchaudio
 
-from duplexchat_pipe.benchmark import run_single_benchmark
+from duplexchat_pipe.benchmark import print_benchmark_table, run_single_benchmark
 from duplexchat_pipe.dialogue import extract_valid_dialogues, split_into_dialogues
 from duplexchat_pipe.outputs import write_label_file
 from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
@@ -158,6 +158,7 @@ def main() -> None:
         print("========= Phase 4: Running Benchmark: DuplexChat =========", flush=True)
         benchmark_path = output_dir / "benchmark.json"
         benchmark_row = run_single_benchmark(speaker_a, speaker_b, benchmark_path, args.runtime_device)
+        print_benchmark_table(benchmark_row)
         debug_dir = output_dir / "debug"
         if args.debug:
             if debug_dir.exists():

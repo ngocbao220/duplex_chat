@@ -1416,6 +1416,18 @@ def run_single_benchmark(speaker_a: Path, speaker_b: Path, output: Path, device:
     return row
 
 
+def print_benchmark_table(row: dict) -> None:
+    """Print scalar benchmark results in the common two-column terminal table."""
+    import pandas as pd
+
+    rows = [
+        {"chỉ_số": key, "kết_quả": value}
+        for key, value in row.items()
+        if isinstance(value, (str, int, float, bool)) or value is None
+    ]
+    print(pd.DataFrame(rows, columns=["chỉ_số", "kết_quả"]).to_string(index=False), flush=True)
+
+
 def _run_single(args: argparse.Namespace) -> None:
     if args.speakerA is None or args.speakerB is None:
         raise SystemExit("--single requires --speakerA and --speakerB")
