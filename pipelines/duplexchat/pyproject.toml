@@ -2,7 +2,7 @@
 name = "duplexchat-runtime"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["duplexchat-pipe", "soundfile", "torch==2.8.0", "torchaudio==2.8.0", "torchcodec>=0.6,<0.8"]
+dependencies = ["duplexchat-pipe", "soundfile", "torch==2.8.0", "torchaudio==2.8.0", "torchcodec>=0.6,<0.8", "wrapt>=2.4.0"]
 
 [tool.uv]
 package = false

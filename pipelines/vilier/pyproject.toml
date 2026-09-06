@@ -6,7 +6,7 @@ dependencies = [
   "numpy", "scipy", "pandas", "soundfile", "tqdm", "matplotlib",
   "torch", "torchaudio", "torchcodec", "librosa", "silero-vad",
   "pyannote.audio>=4.0", "huggingface-hub", "speechbrain",
-  "setuptools<81",
+  "setuptools<81", "wrapt>=2.4.0",
 ]
 
 [dependency-groups]
