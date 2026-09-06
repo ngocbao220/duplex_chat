@@ -49,7 +49,7 @@ def test_resume_checks_input_config_and_outputs_and_preserves_history(tmp_path):
     run_sample('cholimex', sample, output, {'model': 'two'}, 'code1', adapter, force=True)
     assert len(calls) == 3
     assert list((tmp_path / '.history').rglob('run.json'))
-    (output / 'speaker_A.wav').write_bytes(b'corrupt')
+    (output / 'speakerA.wav').write_bytes(b'corrupt')
     run_sample('cholimex', sample, output, {'model': 'two'}, 'code1', adapter)
     assert len(calls) == 4
     before = fingerprint('cholimex', source, config, 'code1')
@@ -127,11 +127,11 @@ def test_all_prepares_once_and_isolates_predictions(monkeypatch, tmp_path, fail_
     # the integration test focused on orchestration and counts mixture creation.
     monkeypatch.setattr(benchmark, 'score_reference_sample', lambda sample, *args: {'key': sample['key'], 'status': 'ok', 'all': {'pit_si_sdr': 2}})
     args = argparse.Namespace(pipeline='all', otospeech_root=None, otospeech_repo='test',
-        otospeech_local_dir=None, size_gb=1, max_samples=None, max_seconds=None,
+        otospeech_local_dir=None, max_gb=1, max_samples=None, max_seconds=None,
         sample_rate=16000, output_root=tmp_path / 'outputs', mixture_root=None,
         pred_root=None, benchmark_output=tmp_path / 'reports/summary.json',
         vilier_config=Path('configs/vilier.json'), duplexchat_config=Path('configs/duplexchat.json'),
-        force=False, vad_threshold_db=-40, crosstalk_threshold_db=-20)
+        force=False, vad_threshold_db=-40, crosstalk_threshold_db=-20, debug=False)
     assert runner.run_otospeech(Config(), args, benchmark, save_wav) == int(fail_pipeline is not None)
     assert len(downloads) == len(mixes) == 1
     assert [request['pipeline'] for request in workers] == list(runner.PIPELINES)

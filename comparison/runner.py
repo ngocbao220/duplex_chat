@@ -17,7 +17,7 @@ PIPELINES = ('cholimex', 'duplexchat', 'vilier')
 
 
 def phase(title):
-    print(f'=====================Phase {title}', flush=True)
+    print(f'========= Phase {title} =========', flush=True)
 
 
 def code_identity(name):
@@ -87,7 +87,9 @@ def prepare_samples(args, benchmark, save_wav):
 
 def pipeline_config(name, args, cfg):
     if name == 'cholimex':
-        return json.loads(json.dumps(asdict(cfg), default=str))
+        config = json.loads(json.dumps(asdict(cfg), default=str))
+        config['debug'] = bool(args.debug)
+        return config
     path = args.vilier_config if name == 'vilier' else args.duplexchat_config
     config = json.loads(path.read_text())
     if name == 'vilier':
@@ -95,6 +97,7 @@ def pipeline_config(name, args, cfg):
         config.setdefault('state_labeling', {})['enabled'] = False
         config.setdefault('runtime', {})['dry_run'] = False
         config.setdefault('entrypoint', {})['sample_rate'] = args.sample_rate
+    config['debug'] = bool(args.debug)
     return config
 
 

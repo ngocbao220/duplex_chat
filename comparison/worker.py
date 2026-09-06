@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
+
+from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path = [entry for entry in sys.path if Path(entry).resolve() != Path(__file__).resolve().parent]
@@ -16,9 +19,13 @@ def cholimex(source, output, config):
     from duplexchat_pipe.config import Config, PATH_FIELDS
     from duplexchat_pipe.cholimex import run_cholimex_file
     from duplexchat_pipe.devices import resolve_device
+    config = dict(config)
+    debug = bool(config.pop('debug', False))
     cfg = Config(**{key: Path(value) if key in PATH_FIELDS and value is not None else value
                     for key, value in config.items()})
     result = run_cholimex_file(source, output, cfg)
+    if not debug:
+        shutil.rmtree(output / 'debug', ignore_errors=True)
     return [output / 'speaker_0.wav', output / 'speaker_1.wav'], {
         'device': resolve_device(cfg.runtime_device, cfg.allow_cpu_fallback), 'pipeline_result': result}
 
@@ -26,9 +33,16 @@ def cholimex(source, output, config):
 def duplexchat(source, output, config):
     from duplexchat_pipe.single_audio import run_single_audio
     from duplexchat_pipe.devices import resolve_device
+    config = dict(config)
+    debug = bool(config.pop('debug', False))
+    phase_dir = output / 'phases'
     run_single_audio(str(source), output_prefix=str(output / 'speaker'),
-                     output_dir=str(output / 'phases'), **config)
-    return [output / 'speaker_A.wav', output / 'speaker_B.wav'], {
+                     output_dir=str(phase_dir), **config)
+    if debug:
+        shutil.move(str(phase_dir), str(output / 'debug'))
+    else:
+        shutil.rmtree(phase_dir)
+    return [output / 'speakerA.wav', output / 'speakerB.wav'], {
         'device': resolve_device(config.get('runtime_device', 'auto'))}
 
 
@@ -71,14 +85,18 @@ def run_batch(request: dict, adapter=None) -> list[dict]:
     name = request['pipeline']
     adapter = adapter or ADAPTERS[name]
     results = []
-    for index, sample in enumerate(request['samples'], 1):
-        print(f"[{name} {index}/{len(request['samples'])}] Processing sample {sample['key']}", flush=True)
-        result = run_sample(name, sample, Path(request['pred_root']) / sample['key'],
-                            request['config'], request['code'], adapter, force=request['force'])
-        results.append(result)
-        write_json(Path(request['results']), results)
-        print(f"[{name}] Complete sample {sample['key']}: {result['status']}"
-              f"{' (resumed)' if result.get('resumed') else ''} {result.get('error', '')}", flush=True)
+    print(f"========= Phase 3: Running Pipeline: {name} =========", flush=True)
+    with tqdm(total=len(request['samples']), desc=f"{name} / samples", unit="sample") as progress:
+        for index, sample in enumerate(request['samples'], 1):
+            progress.set_postfix_str(sample['key'], refresh=True)
+            print(f"[{name} {index}/{len(request['samples'])}] Processing sample {sample['key']}", flush=True)
+            result = run_sample(name, sample, Path(request['pred_root']) / sample['key'],
+                                request['config'], request['code'], adapter, force=request['force'])
+            results.append(result)
+            write_json(Path(request['results']), results)
+            progress.update(1)
+            print(f"[{name}] Complete sample {sample['key']}: {result['status']}"
+                  f"{' (resumed)' if result.get('resumed') else ''} {result.get('error', '')}", flush=True)
     return results
 
 

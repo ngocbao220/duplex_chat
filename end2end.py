@@ -12,7 +12,7 @@ from duplexchat_pipe.runner import run_phase
 
 
 def _phase(title: str) -> None:
-    print(f"=====================Phase {title}", flush=True)
+    print(f"========= Phase {title} =========", flush=True)
 
 
 def _run_otospeech(cfg, args: argparse.Namespace) -> int:

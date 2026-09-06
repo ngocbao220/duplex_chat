@@ -60,7 +60,7 @@ def reusable(output: Path, identity: str, source: Path) -> dict | None:
         result = json.loads((output / 'run.json').read_text())
         if result['status'] != 'complete' or result['fingerprint'] != identity:
             return None
-        tracks = [output / name for name in ('speaker_A.wav', 'speaker_B.wav')]
+        tracks = [output / name for name in ('speakerA.wav', 'speakerB.wav')]
         validate_tracks(source, tracks)
         if result['track_sha256'] != [sha256(path) for path in tracks]:
             return None
@@ -89,7 +89,7 @@ def run_sample(pipeline, sample, output, config, code, adapter, force=False) -> 
         write_json(output / 'run.json', result)
         tracks, metadata = adapter(source, output, config)
         duration = validate_tracks(source, tracks)
-        canonical = [output / name for name in ('speaker_A.wav', 'speaker_B.wav')]
+        canonical = [output / name for name in ('speakerA.wav', 'speakerB.wav')]
         for original, target in zip(tracks, canonical):
             if original.resolve() != target.resolve():
                 shutil.copy2(original, target)
