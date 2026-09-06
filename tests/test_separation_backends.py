@@ -131,3 +131,38 @@ def test_dialoguesidon_short_input_returns_original_timeline_length(monkeypatch)
     assert sr == 16000
     assert spk0.shape == (1, 1600)
     assert spk1.shape == (1, 1600)
+
+
+def test_export_loader_maps_serialized_cuda_artifacts_to_cpu_and_restores(monkeypatch):
+    import pytest
+    from torch._export.serde import serialize
+    original = serialize.deserialize_torch_artifact
+    seen = []
+    def fake_load(buffer, **kwargs):
+        seen.append(kwargs)
+        return {'tensor': 'loaded'}
+    monkeypatch.setattr(torch, 'load', fake_load)
+    def export_load(path):
+        assert serialize.deserialize_torch_artifact(b'checkpoint') == {'tensor': 'loaded'}
+        raise ValueError('test export failure')
+    monkeypatch.setattr(torch.export, 'load', export_load)
+    with pytest.raises(ValueError, match='test export failure'):
+        separate._load_exported_module('model.pt2', torch.device('cpu'))
+    assert serialize.deserialize_torch_artifact is original
+    assert torch.load is fake_load
+    assert seen == [{'weights_only': False, 'map_location': 'cpu'}]
+
+
+def test_export_graph_device_constants_follow_requested_cpu():
+    graph = torch.fx.Graph()
+    value = graph.placeholder('value')
+    graph.call_function(torch.ops.aten._assert_tensor_metadata.default,
+                        (value,), {'device': torch.device('cuda:0'), 'dtype': torch.int64})
+    graph.output(value)
+    module = torch.fx.GraphModule(torch.nn.Module(), graph)
+    actual = torch.ones(2, dtype=torch.int64)
+    import pytest
+    with pytest.raises(RuntimeError, match='device mismatch'):
+        module(actual)
+    migrated = separate._retarget_exported_module(module, torch.device('cpu'))
+    assert torch.equal(migrated(actual), actual)

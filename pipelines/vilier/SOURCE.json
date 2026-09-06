@@ -1,0 +1,5 @@
+{
+  "source": "vilier",
+  "commit": "980d9f83cb1ae25c8adbe91abd014828d2b19d9a",
+  "import": "Tracked source, tests, dependency profiles and documentation only; no datasets, caches or weights."
+}

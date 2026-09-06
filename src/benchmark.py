@@ -82,11 +82,11 @@ REFERENCE_SUMMARY_ROWS = [
     ("all", "Chất lượng audio", "PIT-SI-SDR", "Prediction giống ground truth đến mức nào", "pit_si_sdr"),
     ("all", "Artifact/rè/nhiễu", "SAR", "Mức méo và artifact do pipeline tạo ra", "sar"),
     ("overlap", "Separation trong overlap", "SIR", "Mức speaker còn lại bị lọt vào kênh", "sir"),
-    ("all", "Độ rõ speech", "ESTOI/STOI", "Khả năng giữ lại nội dung lời nói", "stoi"),
-    ("all", "Chất lượng nghe", "PESQ/POLQA", "Mức tương đồng về perceptual quality", "pesq"),
+    ("all", "Độ rõ speech", "ESTOI", "Khả năng giữ lại nội dung lời nói", "stoi"),
+    ("all", "Chất lượng nghe", "PESQ", "Mức tương đồng về perceptual quality", "pesq"),
     ("overlap", "Crosstalk", "Crosstalk rate", "Tỷ lệ frame bị lẫn speaker thứ hai", "crosstalk_rate"),
-    ("all", "Timing", "VAD F1, onset/offset error", "Prediction có giữ đúng thời điểm nói không", "vad_f1"),
-    ("overlap", "Overlap timing", "Overlap F1/IoU", "Prediction có phát hiện đúng vùng overlap không", "overlap_f1"),
+    ("all", "Timing", "VAD F1", "Prediction có giữ đúng thời điểm nói không", "vad_f1"),
+    ("overlap", "Overlap timing", "Overlap F1", "Prediction có phát hiện đúng vùng overlap không", "overlap_f1"),
 ]
 
 
@@ -739,6 +739,10 @@ def score_reference_sample(
     except Exception as exc:  # noqa: BLE001
         return _null_reference_row(key, "missing_ground_truth", {"ground_truth": str(exc)})
 
+    if sample.get("duration_limit_sec") is not None:
+        limit = max(1, round(float(sample["duration_limit_sec"]) * sample_rate))
+        mixture, gt = mixture[..., :limit], gt[..., :limit]
+
     pred_paths = _resolve_prediction_paths(key, Path(pred_root))
     if pred_paths is None:
         row = _null_reference_row(key, "missing_prediction", {"prediction": "speaker prediction files missing"})
@@ -814,7 +818,7 @@ def _percentile(values: list[float], percentile: float) -> float | None:
     return ordered[index]
 
 
-def write_reference_reports(rows: list[dict[str, Any]], output: Path) -> None:
+def write_reference_reports(rows: list[dict[str, Any]], output: Path, *, title: str = "Reference Benchmark", print_table: bool = False) -> None:
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     sample_metrics_path = output.parent / "sample_metrics.jsonl"
@@ -854,10 +858,10 @@ def write_reference_reports(rows: list[dict[str, Any]], output: Path) -> None:
 
     md_path = output.parent / "summary.md"
     lines = [
-        "# IPPC Reference Benchmark",
+        f"# {title}",
         "",
-        "| Condition | Mục tiêu | Metric chính | Ý nghĩa | Mean | Median | P95 |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: |",
+        "| Condition | Mục tiêu | Metric chính | Ý nghĩa | Mean | Median | P95 | Available |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
     ]
     for row in summary_rows:
         lines.append(
@@ -868,14 +872,17 @@ def write_reference_reports(rows: list[dict[str, Any]], output: Path) -> None:
                     str(row["target"]),
                     str(row["metric"]),
                     str(row["meaning"]),
-                    _format_table_value(row["mean"]),
-                    _format_table_value(row["median"]),
-                    _format_table_value(row["p95"]),
+                    _format_table_value(row["mean"]) or "N/A",
+                    _format_table_value(row["median"]) or "N/A",
+                    _format_table_value(row["p95"]) or "N/A",
+                    str(row["available"]),
                 ]
             )
             + " |"
         )
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if print_table:
+        print("\n".join(lines), flush=True)
 
 
 def run_reference_benchmark(

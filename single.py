@@ -9,7 +9,7 @@ import torchaudio
 
 from duplexchat_pipe.outputs import write_label_file
 from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
-from test_single import run_single_audio
+from duplexchat_pipe.single_audio import run_single_audio
 
 
 DEFAULT_DIARIZATION_BACKEND = "auto"

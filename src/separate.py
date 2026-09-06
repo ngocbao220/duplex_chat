@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
+import io
 import threading
-from contextlib import contextmanager, redirect_stderr
 from collections.abc import Callable
 from pathlib import Path
 
@@ -27,10 +26,48 @@ _cache: dict = {}
 _cache_lock = threading.Lock()
 
 
-@contextmanager
-def _suppress_torch_export_legacy_stderr():
-    with open(os.devnull, "w", encoding="utf-8") as devnull, redirect_stderr(devnull):
-        yield
+def _retarget_exported_module(module, device: torch.device):
+    """Replace device literals captured by a torch.export graph."""
+    def retarget(value):
+        if isinstance(value, torch.device):
+            return device
+        if isinstance(value, tuple):
+            return tuple(retarget(item) for item in value)
+        if isinstance(value, list):
+            return [retarget(item) for item in value]
+        if isinstance(value, dict):
+            return {key: retarget(item) for key, item in value.items()}
+        return value
+
+    for node in module.graph.nodes:
+        node.args = retarget(node.args)
+        node.kwargs = retarget(node.kwargs)
+    module.recompile()
+    return module
+
+
+def _load_exported_module(path, device):
+    """Load CUDA-authored export artifacts on CPU before moving to the task device.
+
+    Called under _cache_lock. Scope the compatibility patch to the export
+    deserializer; never replace torch.load globally or at module import.
+    """
+    from torch._export.serde import serialize
+    original = serialize.deserialize_torch_artifact
+
+    def deserialize_on_cpu(serialized):
+        if isinstance(serialized, (dict, tuple)):
+            return serialized
+        if not serialized:
+            return {}
+        return torch.load(io.BytesIO(serialized), weights_only=False, map_location='cpu')
+
+    serialize.deserialize_torch_artifact = deserialize_on_cpu
+    try:
+        module = torch.export.load(path).module()
+        return _retarget_exported_module(module, device).to(device)
+    finally:
+        serialize.deserialize_torch_artifact = original
 
 
 def load_separation_models(
@@ -72,10 +109,9 @@ def _load_dialoguesidon_models(device: str = "cuda", model_id: str | None = None
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-        with _suppress_torch_export_legacy_stderr():
-            ssl_encoder = torch.export.load(paths["ssl_encoder.pt2"]).module().to(torch_device)
-            diffusion_head = torch.export.load(paths["diffusion_head.pt2"]).module().to(torch_device)
-            vae_decoder = torch.export.load(paths["vae_decoder.pt2"]).module().to(torch_device)
+        ssl_encoder = _load_exported_module(paths["ssl_encoder.pt2"], torch_device)
+        diffusion_head = _load_exported_module(paths["diffusion_head.pt2"], torch_device)
+        vae_decoder = _load_exported_module(paths["vae_decoder.pt2"], torch_device)
 
         latent_norm_mean = torch.tensor(
             meta["latent_norm_mean"], dtype=torch.float32, device=torch_device

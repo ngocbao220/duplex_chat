@@ -24,3 +24,11 @@ core.*
 error.log
 
 duplexchat_project.zip
+
+.uv-cache/
+reports/
+*.ckpt
+*.pth
+*.pt
+
+.DS_Store

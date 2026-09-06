@@ -1,0 +1,16 @@
+[project]
+name = "vilier-runtime"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "numpy", "scipy", "pandas", "soundfile", "tqdm", "matplotlib",
+  "torch", "torchaudio", "torchcodec", "librosa", "silero-vad",
+  "pyannote.audio>=4.0", "huggingface-hub", "speechbrain",
+  "setuptools<81",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false

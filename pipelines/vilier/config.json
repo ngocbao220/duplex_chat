@@ -1,0 +1,124 @@
+{
+  "entrypoint": {
+    "input_path": "inputs/samples/easy_1.wav",
+    "output_path": "outputs",
+    "sample_rate": 16000
+  },
+  "runtime": {
+    "dry_run": false
+  },
+  "logging": {
+    "log_dir": "logs",
+    "progress_bar": true
+  },
+  "vad": {
+    "backend": "silero",
+    "model": "silero_vad",
+    "threshold": 0.2,
+    "min_duration_seconds": 0.15,
+    "merge_gap_seconds": 0.2
+  },
+  "diarization": {
+    "_model_replacement_comment": "Change backend/model to replace diarization model. Examples: pyannote + pyannote/speaker-diarization-3.1, sortformer + nvidia/diar_sortformer_4spk-v1, diarizen + BUT-FIT/diarizen-wavlm-large-s80-md.",
+    "_model_replacement_examples": [
+      {
+        "backend": "pyannote",
+        "model": "pyannote/speaker-diarization-community-1",
+        "requirements": "requirements/pyannote-community.txt"
+      },
+      {
+        "backend": "pyannote",
+        "model": "pyannote/speaker-diarization-3.1",
+        "requirements": "requirements/pyannote-3.1.txt"
+      },
+      {
+        "backend": "sortformer",
+        "model": "nvidia/diar_sortformer_4spk-v1",
+        "requirements": "requirements/sortformer.txt"
+      },
+      {
+        "backend": "diarizen",
+        "model": "BUT-FIT/diarizen-wavlm-large-s80-md",
+        "requirements": "requirements/diarizen.txt"
+      }
+    ],
+    "backend": "pyannote",
+    "model": "pyannote/speaker-diarization-community-1",
+    "token_env": "HUGGINGFACE_TOKEN",
+    "device": "auto",
+    "nemo_log_level": "ERROR",
+    "min_duration_seconds": 0.25,
+    "max_chunk_seconds": 180.0
+  },
+  "asr": {
+    "_model_replacement_comment": "Change model to replace ASR model. Keep backend=phowhisper_local for local PhoWhisper-compatible Transformers models.",
+    "enabled": false,
+    "backend": "phowhisper_local",
+    "model": "vinai/PhoWhisper-large",
+    "language": "vi",
+    "device": "auto",
+    "chunk_length_seconds": 30.0
+  },
+  "state_labeling": {
+    "_model_replacement_comment": "Change model to replace the Qwen/OpenAI-compatible state-labeling model.",
+    "enabled": false,
+    "backend": "qwen",
+    "model": "qwen3.8-max",
+    "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "api_key_env": "DASHSCOPE_API_KEY",
+    "state_dir": "state",
+    "labels": [
+      "complete",
+      "incomplete"
+    ]
+  },
+  "export": {
+    "write_segment_wavs": false,
+    "write_visualizations": false
+  },
+  "overlap": {
+    "threshold_seconds": 0.05
+  },
+  "music_separation": {
+    "_model_replacement_comment": "Change model to replace Demucs music separation model, for example htdemucs or another model supported by demucs.pretrained.get_model.",
+    "enabled": false,
+    "backend": "demucs",
+    "model": "htdemucs",
+    "device": "auto",
+    "shifts": 1,
+    "split": true,
+    "overlap": 0.25,
+    "residual_subtract": 0.5
+  },
+  "overlap_separation": {
+    "_model_replacement_comment": "Change backend/model_name to replace overlap speech separation model. Examples: clearvoice + alibabasglab/MossFormer2_SS_16K, speechbrain + speechbrain/sepformer-wsj02mix, sepreformer + SepReformer_Base_WSJ0. pyannote PixIT is tracked here as the pyannote speech-separation model profile; the current runtime still exposes its diarization labels through diarization.backend=pixit for backward compatibility.",
+    "_model_replacement_examples": [
+      {
+        "backend": "clearvoice",
+        "model_name": "alibabasglab/MossFormer2_SS_16K",
+        "requirements": "requirements/clearvoice-separation.txt"
+      },
+      {
+        "backend": "speechbrain",
+        "model_name": "speechbrain/sepformer-wsj02mix",
+        "requirements": "requirements/speechbrain-separation.txt"
+      },
+      {
+        "backend": "sepreformer",
+        "model_name": "SepReformer_Base_WSJ0",
+        "requirements": "requirements/sepreformer.txt"
+      },
+      {
+        "backend": "pyannote_pixit",
+        "model_name": "pyannote/speech-separation-ami-1.0",
+        "requirements": "requirements/pyannote-pixit.txt",
+        "runtime_note": "Separation model profile. Use diarization.backend=pixit only when you need the legacy pyannote PixIT diarization-label wrapper."
+      }
+    ],
+    "enabled": true,
+    "backend": "clearvoice",
+    "model_name": "alibabasglab/MossFormer2_SS_16K",
+    "device": "auto",
+    "overlap_threshold_seconds": 0.2
+  }
+}
