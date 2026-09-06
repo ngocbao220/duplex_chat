@@ -292,3 +292,152 @@ def test_compute_turn_taking_stats_from_stereo_activity():
     assert stats["simultaneous_speech_pct"] is not None
     assert stats["simultaneous_speech_pct"] > 0
     assert stats["overlapping_transitions_pct"] is not None
+
+
+def test_mix_ground_truth_pair_sums_agent_and_ctm(tmp_path: Path):
+    agent = tmp_path / "sample-AGENT.wav"
+    ctm = tmp_path / "sample-CTM.wav"
+    torchaudio.save(str(agent), torch.ones(1, 16000) * 0.25, 16000)
+    torchaudio.save(str(ctm), torch.ones(1, 16000) * 0.5, 16000)
+
+    mixture, gt, sample_rate = benchmark.mix_ground_truth_pair(agent, ctm, 16000)
+
+    assert sample_rate == 16000
+    assert gt.shape == (2, 16000)
+    assert mixture.shape == (1, 16000)
+    assert torch.allclose(gt[0], torch.full((16000,), 0.25))
+    assert torch.allclose(gt[1], torch.full((16000,), 0.5), atol=1e-4)
+    assert torch.allclose(mixture[0], torch.full((16000,), 0.75), atol=1e-4)
+
+
+def test_discover_ippc_pairs_finds_agent_and_ctm(tmp_path: Path):
+    pair_dir = tmp_path / "pairs" / "pair_001"
+    pair_dir.mkdir(parents=True)
+    agent = pair_dir / "call_01-AGENT.wav"
+    ctm = pair_dir / "call_02-CTM.wav"
+    torchaudio.save(str(agent), torch.zeros(1, 100), 1000)
+    torchaudio.save(str(ctm), torch.zeros(1, 100), 1000)
+
+    rows = benchmark.discover_ippc_pairs(tmp_path)
+
+    assert rows == [
+        {
+            "key": "pair_001",
+            "gt_agent": str(agent),
+            "gt_ctm": str(ctm),
+        }
+    ]
+
+
+def test_discover_otospeech_samples_finds_speaker_streams(tmp_path: Path):
+    sample_dir = tmp_path / "split" / "sample_001"
+    sample_dir.mkdir(parents=True)
+    metadata = sample_dir / "metadata.json"
+    speaker_1 = sample_dir / "speaker_1_audio.wav"
+    speaker_2 = sample_dir / "speaker_2_audio.wav"
+    (sample_dir / "speaker_1_annotation_a.srt").write_text("1\n", encoding="utf-8")
+    (sample_dir / "speaker_2_annotation_a.srt").write_text("1\n", encoding="utf-8")
+    metadata.write_text("{}", encoding="utf-8")
+    torchaudio.save(str(speaker_1), torch.zeros(1, 100), 1000)
+    torchaudio.save(str(speaker_2), torch.zeros(1, 100), 1000)
+
+    rows = benchmark.discover_otospeech_samples(tmp_path)
+
+    assert rows == [
+        {
+            "key": "split/sample_001",
+            "metadata": str(metadata),
+            "gt_speaker_1": str(speaker_1),
+            "gt_speaker_2": str(speaker_2),
+            "speaker_1_srt": str(sample_dir / "speaker_1_annotation_a.srt"),
+            "speaker_2_srt": str(sample_dir / "speaker_2_annotation_a.srt"),
+        }
+    ]
+
+
+def test_download_otospeech_dataset_respects_size_cap(monkeypatch):
+    calls = {}
+
+    def fake_snapshot_download(**kwargs):
+        calls.update(kwargs)
+        return "/tmp/otospeech"
+
+    class FakeFile:
+        def __init__(self, path: str, size: int):
+            self.path = path
+            self.size = size
+
+    class FakeApi:
+        def list_repo_tree(self, **_kwargs):
+            return [
+                FakeFile("sample_a/metadata.json", 100),
+                FakeFile("sample_a/speaker_1_annotation_a.srt", 100),
+                FakeFile("sample_a/speaker_2_annotation_a.srt", 100),
+                FakeFile("sample_a/speaker_1_audio.wav", 4),
+                FakeFile("sample_a/speaker_2_audio.wav", 4),
+                FakeFile("sample_b/metadata.json", 100),
+                FakeFile("sample_b/speaker_1_annotation_a.srt", 100),
+                FakeFile("sample_b/speaker_2_annotation_a.srt", 100),
+                FakeFile("sample_b/speaker_1_audio.wav", 7),
+                FakeFile("sample_b/speaker_2_audio.wav", 7),
+            ]
+
+    monkeypatch.setattr(benchmark, "snapshot_download", fake_snapshot_download)
+    monkeypatch.setattr(benchmark, "HfApi", lambda: FakeApi())
+
+    local_dir = benchmark.download_otospeech_dataset(max_download_gb=0.0000004)
+
+    assert local_dir == Path("/tmp/otospeech")
+    assert calls["repo_id"] == "otoearth/otoSpeech-full-duplex-turn-104h"
+    assert calls["repo_type"] == "dataset"
+    assert "sample_a/speaker_1_audio.wav" in calls["allow_patterns"]
+    assert "sample_a/speaker_2_audio.wav" in calls["allow_patterns"]
+    assert "sample_b/speaker_1_audio.wav" not in calls["allow_patterns"]
+
+
+def test_reference_row_missing_prediction_keeps_metrics_null(tmp_path: Path):
+    pair_dir = tmp_path / "pairs" / "pair_001"
+    pair_dir.mkdir(parents=True)
+    agent = pair_dir / "call-AGENT.wav"
+    ctm = pair_dir / "call-CTM.wav"
+    torchaudio.save(str(agent), torch.ones(1, 1600) * 0.2, 16000)
+    torchaudio.save(str(ctm), torch.zeros(1, 1600), 16000)
+
+    row = benchmark.score_reference_sample(
+        {"key": "pair_001", "gt_speaker_1": str(agent), "gt_speaker_2": str(ctm)},
+        pred_root=tmp_path / "pred",
+        target_sample_rate=16000,
+    )
+
+    assert row["status"] == "missing_prediction"
+    assert row["all"]["pit_si_sdr"] is None
+    assert row["overlap"]["sir"] is None
+    assert row["metric_errors"]["prediction"] == "speaker prediction files missing"
+
+
+def test_write_reference_summary_markdown_includes_metric_meaning(tmp_path: Path):
+    row = {
+        "key": "pair_001",
+        "status": "ok",
+        "all": {
+            "pit_si_sdr": 10.0,
+            "sar": 20.0,
+            "stoi": None,
+            "pesq": None,
+            "vad_f1": 0.9,
+            "onset_mae": 0.05,
+        },
+        "overlap": {
+            "sir": 12.0,
+            "crosstalk_rate": 0.1,
+            "overlap_f1": 0.8,
+            "overlap_iou": 0.7,
+        },
+    }
+
+    benchmark.write_reference_reports([row], tmp_path / "summary.json")
+
+    text = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert "| Condition | Mục tiêu | Metric chính | Ý nghĩa | Mean | Median | P95 |" in text
+    assert "Prediction giống ground truth đến mức nào" in text
+    assert "Tỷ lệ frame bị lẫn speaker thứ hai" in text

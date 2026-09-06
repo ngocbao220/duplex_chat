@@ -1,0 +1,90 @@
+{
+  "samples": 100,
+  "status_counts": {
+    "missing_ground_truth": 3,
+    "missing_prediction": 97
+  },
+  "sample_metrics_jsonl": "reports/ippc_benchmark/sample_metrics.jsonl",
+  "summary": [
+    {
+      "condition": "all",
+      "target": "Chất lượng audio",
+      "metric": "PIT-SI-SDR",
+      "meaning": "Prediction giống ground truth đến mức nào",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "all",
+      "target": "Artifact/rè/nhiễu",
+      "metric": "SAR",
+      "meaning": "Mức méo và artifact do pipeline tạo ra",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "overlap",
+      "target": "Separation trong overlap",
+      "metric": "SIR",
+      "meaning": "Mức speaker còn lại bị lọt vào kênh",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "all",
+      "target": "Độ rõ speech",
+      "metric": "ESTOI/STOI",
+      "meaning": "Khả năng giữ lại nội dung lời nói",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "all",
+      "target": "Chất lượng nghe",
+      "metric": "PESQ/POLQA",
+      "meaning": "Mức tương đồng về perceptual quality",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "overlap",
+      "target": "Crosstalk",
+      "metric": "Crosstalk rate",
+      "meaning": "Tỷ lệ frame bị lẫn speaker thứ hai",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "all",
+      "target": "Timing",
+      "metric": "VAD F1, onset/offset error",
+      "meaning": "Prediction có giữ đúng thời điểm nói không",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    },
+    {
+      "condition": "overlap",
+      "target": "Overlap timing",
+      "metric": "Overlap F1/IoU",
+      "meaning": "Prediction có phát hiện đúng vùng overlap không",
+      "mean": null,
+      "median": null,
+      "p95": null,
+      "available": 0
+    }
+  ]
+}
