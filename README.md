@@ -12,6 +12,30 @@ Khi chạy CLI, từng phase có progress bar để theo dõi tiến trình.
 
 ## So sánh Cholimex, DuplexChat và Vilier
 
+## Branch `vilier`
+
+Branch này mặc định chạy Vilier cho OtoSpeech khi không truyền `--pipeline`.
+
+Chạy một input local bằng Vilier native:
+
+```bash
+INPUT_PATH=/absolute/path/to/input.wav \
+OUTPUT_PATH=outputs/vilier \
+UV_CACHE_DIR=.uv-cache MPLBACKEND=Agg \
+bash pipelines/vilier/run_pipeline.sh
+```
+
+Chạy OtoSpeech với logic chuẩn bị mixture/ground truth giống Cholimex, nhưng
+worker inference là Vilier:
+
+```bash
+MPLBACKEND=Agg uv run python end2end.py \
+  --data oto-speech \
+  --size_gb 1
+```
+
+Thêm `--pipeline vilier` chỉ để ghi rõ lựa chọn; không bắt buộc trên branch này.
+
 Chọn branch theo mục đích trước khi chạy. Hiện repository có ba branch công việc:
 
 | Branch | Dùng khi | Lệnh bắt đầu |

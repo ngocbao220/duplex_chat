@@ -48,7 +48,7 @@ def main() -> None:
 
     if args.data != "oto-speech" and args.pipeline is not None:
         parser.error("--pipeline is currently supported with --data oto-speech only")
-    args.pipeline = args.pipeline or "cholimex"
+    args.pipeline = args.pipeline or "vilier"
     for name in ("size_gb", "sample_rate", "max_samples", "max_seconds"):
         value = getattr(args, name)
         if value is not None and (not math.isfinite(value) or value <= 0):
