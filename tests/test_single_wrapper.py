@@ -40,6 +40,7 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
         )
 
     monkeypatch.setattr(single, "run_single_audio", fake_run_single_audio)
+    monkeypatch.setattr(single, "run_single_benchmark", lambda *args: {"metric_status": "unavailable"})
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "sys.argv",
@@ -64,6 +65,8 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
     assert run_manifest["speakerB"] == str(Path("outputs") / "demo1" / "speakerB.wav")
     assert run_manifest["debug"] is True
     assert run_manifest["device"]["resolved"] == "cpu"
+    assert run_manifest["conversation_summary"]["conversations"][0]["start"] == 0.0
+    assert run_manifest["benchmark"]["reference_status"] == "unavailable"
     assert run_manifest["labels"]["vad"] == str(Path("outputs") / "demo1" / "vad.txt")
     assert run_manifest["labels"]["diarization"] == str(Path("outputs") / "demo1" / "diarization.txt")
     assert run_manifest["labels"]["separation"] == str(Path("outputs") / "demo1" / "separation.txt")

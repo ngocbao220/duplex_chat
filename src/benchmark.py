@@ -1376,24 +1376,27 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_single(args: argparse.Namespace) -> None:
-    if args.speakerA is None or args.speakerB is None:
-        raise SystemExit("--single requires --speakerA and --speakerB")
-    waveform, sample_rate = load_speaker_pair(args.speakerA, args.speakerB)
+def run_single_benchmark(speaker_a: Path, speaker_b: Path, output: Path, device: str = "auto") -> dict:
+    """Benchmark final tracks without a ground-truth reference.
+
+    Reference-dependent fields remain explicit nulls so all pipeline reports
+    share the Cholimex reference-benchmark schema.
+    """
+    waveform, sample_rate = load_speaker_pair(speaker_a, speaker_b)
     cfg = Config(
-        benchmark_device=args.device,
-        benchmark_metrics=args.metrics,
-        benchmark_squim_subjective_reference_path=args.reference,
-        benchmark_dnsmos_model_path=args.dnsmos_model,
+        benchmark_device=device,
+        benchmark_metrics=list(DEFAULT_METRIC_NAMES),
     )
     row = score_waveform(
         waveform,
         sample_rate,
         cfg,
-        key=args.speakerA.stem,
+        key=speaker_a.stem,
         separation_backend="single",
     )
-    output = args.output or (args.speakerA.parent / "benchmark.json")
+    for key in REFERENCE_METRIC_KEYS:
+        row[key] = None
+    row["reference_status"] = "unavailable"
     output.parent.mkdir(parents=True, exist_ok=True)
     metrics_table_path = _metrics_table_path(output)
     turn_taking_table_path = _turn_taking_table_path(output)
@@ -1410,10 +1413,18 @@ def _run_single(args: argparse.Namespace) -> None:
         TURN_TAKING_TABLE_COLUMNS,
         "Turn-Taking Statistics of DuplexChat",
     )
+    return row
+
+
+def _run_single(args: argparse.Namespace) -> None:
+    if args.speakerA is None or args.speakerB is None:
+        raise SystemExit("--single requires --speakerA and --speakerB")
+    output = args.output or (args.speakerA.parent / "benchmark.json")
+    row = run_single_benchmark(args.speakerA, args.speakerB, output, args.device)
     print(json.dumps(row, ensure_ascii=False, indent=2))
     print(f"Saved benchmark: {output}")
-    print(f"Saved metrics table: {metrics_table_path}")
-    print(f"Saved turn-taking table: {turn_taking_table_path}")
+    print(f"Saved metrics table: {_metrics_table_path(output)}")
+    print(f"Saved turn-taking table: {_turn_taking_table_path(output)}")
 
 
 def main() -> None:

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import torchaudio
 
+from duplexchat_pipe.benchmark import run_single_benchmark
+from duplexchat_pipe.dialogue import extract_valid_dialogues, split_into_dialogues
 from duplexchat_pipe.outputs import write_label_file
 from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
 from duplexchat_pipe.single_audio import run_single_audio
@@ -98,6 +100,17 @@ def _write_single_label_files(temp_output_dir: Path, output_dir: Path, speaker_a
     }
 
 
+def _conversation_summary(segments: list[dict]) -> dict:
+    conversations = split_into_dialogues(segments, gap_seconds=5.0)
+    valid = extract_valid_dialogues(segments, gap_seconds=5.0, min_duration_seconds=10.0)
+    def row(index, dialogue):
+        return {"id": index, "start": dialogue.start, "end": dialogue.end,
+                "duration": dialogue.duration, "speakers": sorted(dialogue.speakers),
+                "segment_count": len(dialogue.segments)}
+    return {"conversations": [row(index + 1, item) for index, item in enumerate(conversations)],
+            "valid_dialogues": [row(index + 1, item) for index, item in enumerate(valid)]}
+
+
 def main() -> None:
     suppress_pyannote_tf32_warning()
     parser = argparse.ArgumentParser(description="Debug DuplexChat on one local audio sample.")
@@ -138,11 +151,19 @@ def main() -> None:
         speaker_a = output_dir / "speakerA.wav"
         speaker_b = output_dir / "speakerB.wav"
         label_files = _write_single_label_files(temp_output_dir, output_dir, speaker_a, speaker_b)
+        print("========= Phase 2.1: Detecting conversations =========", flush=True)
+        conversation_summary = _conversation_summary(_diarization_segments(temp_output_dir))
+        print(f"Conversations by silence gap: {len(conversation_summary['conversations'])}", flush=True)
+        print(f"DuplexChat-valid dialogues: {len(conversation_summary['valid_dialogues'])}", flush=True)
+        print("========= Phase 4: Running Benchmark: DuplexChat =========", flush=True)
+        benchmark_path = output_dir / "benchmark.json"
+        benchmark_row = run_single_benchmark(speaker_a, speaker_b, benchmark_path, args.runtime_device)
         debug_dir = output_dir / "debug"
         if args.debug:
             if debug_dir.exists():
                 shutil.rmtree(debug_dir)
             shutil.copytree(temp_output_dir, debug_dir)
+            (debug_dir / "conversations.json").write_text(json.dumps(conversation_summary, ensure_ascii=False, indent=2) + "\n")
         run_manifest = {
             "input": args.input,
             "output_dir": str(output_dir),
@@ -156,6 +177,9 @@ def main() -> None:
                 "resolved": resolve_device(args.runtime_device, allow_cpu_fallback=True),
             },
             "labels": label_files,
+            "conversation_summary": conversation_summary,
+            "benchmark": {"status": benchmark_row.get("metric_status", "unavailable"),
+                          "reference_status": "unavailable", "report": str(benchmark_path)},
             "models": {
                 "diarization": {
                     "backend": args.diarization_backend,
