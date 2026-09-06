@@ -92,18 +92,12 @@ def run_single_audio(
         # The standardized input is already persisted in the phase directory.
         pbar.update(1)
 
-    print("========= Phase 2: Loading models =========", flush=True)
-    with tqdm(total=2, desc=f"{audio_path.stem} / load models", unit="model", leave=False) as pbar:
+    print("========= Phase 2: Loading diarization model =========", flush=True)
+    with tqdm(total=1, desc=f"{audio_path.stem} / load diarizer", unit="model", leave=False) as pbar:
         diarize_pipeline = load_diarization_pipeline(
             diarization_model,
             device=device,
             backend=diarization_backend,
-        )
-        pbar.update(1)
-        sep_models = load_separation_models(
-            device=device,
-            backend=separation_backend,
-            model_id=separation_model,
         )
         pbar.update(1)
 
@@ -147,6 +141,16 @@ def run_single_audio(
 
     if str(device).startswith("cuda"):
         release_diarization_gpu_memory(diarize_pipeline)
+    del diarize_pipeline
+
+    print("========= Phase 3: Loading separation model =========", flush=True)
+    with tqdm(total=1, desc=f"{audio_path.stem} / load separator", unit="model", leave=False) as pbar:
+        sep_models = load_separation_models(
+            device=device,
+            backend=separation_backend,
+            model_id=separation_model,
+        )
+        pbar.update(1)
 
     wav, sr = load_wav_tensor(temp_wav)
     overlap = max(1.0, separate_chunk / 6.0)

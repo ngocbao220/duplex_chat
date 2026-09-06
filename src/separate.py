@@ -392,7 +392,10 @@ def run_separation(
 
     if sample_rate != SAMPLE_RATE_IN:
         wav = F_audio.resample(wav, sample_rate, SAMPLE_RATE_IN)
-    wav = wav.to(device)
+    # Keep the full source timeline on CPU. Only the active chunk belongs on
+    # CUDA; otherwise a small chunk setting still leaves the whole recording
+    # (and its growing stitched output) consuming VRAM.
+    wav = wav.cpu()
 
     chunk_samples = int(chunk_seconds * SAMPLE_RATE_IN)
     total_samples = wav.shape[-1]
@@ -400,8 +403,9 @@ def run_separation(
     if total_samples <= chunk_samples:
         if progress_callback is not None:
             progress_callback("start", 1)
-        max_val = wav.abs().max().clamp_min(1e-6)
-        wav_norm = torch.nn.functional.pad(0.9 * wav / max_val, (160, 160))
+        chunk = wav.to(device)
+        max_val = chunk.abs().max().clamp_min(1e-6)
+        wav_norm = torch.nn.functional.pad(0.9 * chunk / max_val, (160, 160))
         separated = _separate_chunk(wav_norm, num_steps, models)
         target_out = max(1, round(total_samples * out_sr / SAMPLE_RATE_IN))
         if separated.shape[-1] > target_out:
@@ -411,6 +415,7 @@ def run_separation(
                 [separated, torch.zeros(2, target_out - separated.shape[-1], device=device)],
                 dim=-1,
             )
+        separated = separated.cpu()
         if progress_callback is not None:
             progress_callback("advance", 1)
     else:
@@ -424,7 +429,7 @@ def run_separation(
 
         for start in starts:
             end = min(start + chunk_samples, total_samples)
-            chunk = wav[:, start:end]
+            chunk = wav[:, start:end].to(device)
             max_val = chunk.abs().max().clamp_min(1e-6)
             chunk_norm = torch.nn.functional.pad(0.9 * chunk / max_val, (160, 160))
             pred = _separate_chunk(chunk_norm, num_steps, models)
@@ -437,6 +442,7 @@ def run_separation(
                     [pred, torch.zeros(2, target_out - pred.shape[-1], device=device)], dim=-1
                 )
 
+            pred = pred.cpu()
             if stitched is None:
                 stitched = pred
                 prev_end_in = end
@@ -452,7 +458,7 @@ def run_separation(
             ))
             if overlap_out > 0:
                 pred, _ = _maybe_swap(stitched[:, -overlap_out:], pred, overlap_out)
-                fade = torch.linspace(0.0, 1.0, overlap_out, device=device).unsqueeze(0)
+                fade = torch.linspace(0.0, 1.0, overlap_out).unsqueeze(0)
                 blended = stitched[:, -overlap_out:] * (1 - fade) + pred[:, :overlap_out] * fade
                 stitched = torch.cat(
                     [stitched[:, :-overlap_out], blended, pred[:, overlap_out:]], dim=-1
