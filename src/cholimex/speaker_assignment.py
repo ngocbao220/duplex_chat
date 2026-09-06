@@ -6,7 +6,11 @@ import torch
 import torch.nn.functional as F
 import torchaudio.functional as F_audio
 
+from duplexchat_pipe.devices import cuda_device_index
+
 from .models import Region
+
+MIN_EMBEDDING_SAMPLES = 8000
 
 
 class EmbeddingExtractor(Protocol):
@@ -18,11 +22,12 @@ class SpeechBrainEmbeddingExtractor:
     def __init__(self, model_id: str, device: str = "cpu") -> None:
         EncoderClassifier = _load_encoder_classifier()
 
-        self.device = device
+        gpu_index = cuda_device_index(device)
+        self.device = f"cuda:{gpu_index}" if gpu_index is not None else device
         self.sample_rate = 16000
         self.model = EncoderClassifier.from_hparams(
             source=model_id,
-            run_opts={"device": device},
+            run_opts={"device": self.device},
         )
 
     def extract(self, wav: torch.Tensor, sample_rate: int) -> torch.Tensor:
@@ -31,6 +36,10 @@ class SpeechBrainEmbeddingExtractor:
             prepared = prepared.mean(dim=0)
         if sample_rate != self.sample_rate:
             prepared = F_audio.resample(prepared.unsqueeze(0), sample_rate, self.sample_rate).squeeze(0)
+        if prepared.numel() == 0:
+            prepared = torch.zeros(MIN_EMBEDDING_SAMPLES, dtype=torch.float32)
+        elif prepared.shape[-1] < MIN_EMBEDDING_SAMPLES:
+            prepared = F.pad(prepared, (0, MIN_EMBEDDING_SAMPLES - prepared.shape[-1]))
         with torch.inference_mode():
             emb = self.model.encode_batch(prepared.unsqueeze(0).to(self.device))
         return emb.detach().cpu().reshape(-1).float()

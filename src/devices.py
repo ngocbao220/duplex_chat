@@ -26,6 +26,20 @@ def resolve_device(device: str = "auto", allow_cpu_fallback: bool = True) -> str
     raise ValueError(f"Unsupported device '{device}'. Use auto, cpu, cuda, or cuda:N.")
 
 
+def cuda_device_index(device: str | torch.device | None) -> int | None:
+    """Return the CUDA index for cuda/cuda:N device strings."""
+    if device is None:
+        return None
+    normalized = str(device).strip().lower()
+    if normalized == "gpu":
+        normalized = "cuda"
+    match = CUDA_DEVICE_RE.match(normalized)
+    if not match:
+        return None
+    index = match.group("index")
+    return int(index) if index is not None else 0
+
+
 def validate_multi_gpu(enabled: bool, device_ids: list[int] | None) -> list[int]:
     """Validate multi-GPU ids and return the effective list."""
     if not enabled:

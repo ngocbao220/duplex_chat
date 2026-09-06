@@ -1,4 +1,5 @@
 import importlib.util
+import wave
 from pathlib import Path
 
 import torch
@@ -89,6 +90,12 @@ def test_end2end_otospeech_download_mix_predict_and_benchmark(monkeypatch, tmp_p
             "gt_speaker_2": str(tmp_path / "s2.wav"),
         }
     ]
+    for index, field in enumerate(("gt_speaker_1", "gt_speaker_2"), 1):
+        with wave.open(samples[0][field], "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(8000 * index)
+            audio.writeframes(bytes([index, 0]) * (80 * index))
 
     monkeypatch.setattr(end2end, "load_config", lambda path: cfg)
     monkeypatch.setattr(
@@ -102,7 +109,6 @@ def test_end2end_otospeech_download_mix_predict_and_benchmark(monkeypatch, tmp_p
         "mix_ground_truth_pair",
         lambda s1, s2, sample_rate: calls.append(("mix", s1, s2, sample_rate)) or (torch.zeros(1, 160), torch.zeros(2, 160), sample_rate),
     )
-    monkeypatch.setattr(end2end, "save_wav", lambda path, wav, sr: calls.append(("save_wav", path, tuple(wav.shape), sr)) or path)
     monkeypatch.setattr(end2end, "run_cholimex_file", lambda input_path, output_dir, cfg_arg: calls.append(("predict", input_path, output_dir, cfg_arg.runtime_device)) or {})
     monkeypatch.setattr(
         end2end.benchmark,
@@ -126,6 +132,10 @@ def test_end2end_otospeech_download_mix_predict_and_benchmark(monkeypatch, tmp_p
 
     end2end.main()
 
+    sample_dir = tmp_path / "outputs" / "otospeech_mixtures" / "train" / "sample_001"
+    assert (sample_dir / "mixture.wav").is_file()
+    for field in ("gt_speaker_1", "gt_speaker_2"):
+        assert (sample_dir / f"{field}.wav").read_bytes() == Path(samples[0][field]).read_bytes()
     assert calls[0][0] == "download"
     assert calls[0][3] == 5.0
     assert ("predict", tmp_path / "outputs" / "otospeech_mixtures" / "train" / "sample_001" / "mixture.wav", tmp_path / "outputs" / "otospeech" / "train" / "sample_001", "cpu") in calls

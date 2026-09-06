@@ -221,11 +221,14 @@ def discover_ippc_pairs(root: Path) -> list[dict[str, str]]:
     return rows
 
 
-def discover_otospeech_samples(root: Path) -> list[dict[str, str]]:
+def discover_otospeech_samples(root: Path, sample_keys: set[str] | None = None) -> list[dict[str, str]]:
     root = Path(root)
     rows: list[dict[str, str]] = []
     for metadata in sorted(root.rglob("metadata.json")):
         sample_dir = metadata.parent
+        key = sample_dir.relative_to(root).as_posix()
+        if sample_keys is not None and key not in sample_keys:
+            continue
         speaker_1 = sample_dir / "speaker_1_audio.wav"
         speaker_2 = sample_dir / "speaker_2_audio.wav"
         speaker_1_srt = sample_dir / "speaker_1_annotation_a.srt"
@@ -234,7 +237,7 @@ def discover_otospeech_samples(root: Path) -> list[dict[str, str]]:
             continue
         rows.append(
             {
-                "key": sample_dir.relative_to(root).as_posix(),
+                "key": key,
                 "metadata": str(metadata),
                 "gt_speaker_1": str(speaker_1),
                 "gt_speaker_2": str(speaker_2),
@@ -245,7 +248,7 @@ def discover_otospeech_samples(root: Path) -> list[dict[str, str]]:
     return rows
 
 
-def _otospeech_limited_allow_patterns(repo_id: str, max_download_gb: float) -> list[str]:
+def otospeech_limited_allow_patterns(repo_id: str, max_download_gb: float) -> list[str]:
     budget_bytes = int(max_download_gb * 1024 ** 3)
     api = HfApi()
     files_by_sample: dict[str, dict[str, int]] = {}
@@ -292,16 +295,26 @@ def _otospeech_limited_allow_patterns(repo_id: str, max_download_gb: float) -> l
     return selected
 
 
+def otospeech_sample_keys_from_patterns(allow_patterns: list[str]) -> set[str]:
+    return {
+        pattern.rsplit("/", 1)[0]
+        for pattern in allow_patterns
+        if "/" in pattern and pattern.endswith("speaker_1_audio.wav")
+    }
+
+
 def download_otospeech_dataset(
     repo_id: str = OTOSPEECH_REPO_ID,
     local_dir: Path | None = None,
     max_download_gb: float | None = 10.0,
+    allow_patterns: list[str] | None = None,
 ) -> Path:
-    allow_patterns = (
-        _otospeech_limited_allow_patterns(repo_id, max_download_gb)
-        if max_download_gb is not None
-        else OTOSPEECH_ALLOW_PATTERNS
-    )
+    if allow_patterns is None:
+        allow_patterns = (
+            otospeech_limited_allow_patterns(repo_id, max_download_gb)
+            if max_download_gb is not None
+            else OTOSPEECH_ALLOW_PATTERNS
+        )
     kwargs: dict[str, Any] = {
         "repo_id": repo_id,
         "repo_type": "dataset",

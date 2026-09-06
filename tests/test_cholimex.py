@@ -13,7 +13,7 @@ from duplexchat_pipe.cholimex.pipeline import _align_proposal_track, run_cholime
 from duplexchat_pipe.cholimex.models import ActivitySegment, Region
 from duplexchat_pipe.cholimex.reconstruction import reconstruct_tracks
 from duplexchat_pipe.cholimex.region_classifier import classify_regions
-from duplexchat_pipe.cholimex.speaker_assignment import SpeechBrainEmbeddingExtractor
+from duplexchat_pipe.cholimex.speaker_assignment import MIN_EMBEDDING_SAMPLES, SpeechBrainEmbeddingExtractor
 from duplexchat_pipe.cholimex.vad_masking import write_vad_artifacts
 from duplexchat_pipe.config import Config, apply_overrides
 
@@ -182,6 +182,32 @@ def test_cholimex_speaker_embedding_reports_missing_speechbrain(monkeypatch):
 
     with pytest.raises(RuntimeError, match=r"uv sync --extra cholimex"):
         SpeechBrainEmbeddingExtractor("speechbrain/spkrec-ecapa-voxceleb", device="cpu")
+
+
+def test_cholimex_speaker_embedding_pads_short_audio(monkeypatch):
+    observed = {}
+
+    class FakeEncoder:
+        @classmethod
+        def from_hparams(cls, source, run_opts):
+            observed["device"] = run_opts["device"]
+            return cls()
+
+        def encode_batch(self, wav):
+            observed["shape"] = tuple(wav.shape)
+            return torch.ones(1, 1, 2)
+
+    monkeypatch.setattr("duplexchat_pipe.cholimex.speaker_assignment._load_encoder_classifier", lambda: FakeEncoder)
+
+    cuda_extractor = SpeechBrainEmbeddingExtractor("fake-model", device="cuda")
+    assert cuda_extractor.device == "cuda:0"
+    assert observed["device"] == "cuda:0"
+
+    extractor = SpeechBrainEmbeddingExtractor("fake-model", device="cpu")
+    emb = extractor.extract(torch.ones(1, 3), sample_rate=16000)
+
+    assert observed["shape"] == (1, MIN_EMBEDDING_SAMPLES)
+    assert torch.equal(emb, torch.ones(2))
 
 
 def test_cholimex_aligns_proposal_tracks_to_original_length():

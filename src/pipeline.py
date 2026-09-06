@@ -31,7 +31,7 @@ from duplexchat_pipe import (
     wds,
     youtube,
 )
-from duplexchat_pipe.devices import pick_task_device, resolve_device, validate_multi_gpu
+from duplexchat_pipe.devices import cuda_device_index, pick_task_device, resolve_device, validate_multi_gpu
 from duplexchat_pipe.logging_utils import (
     append_error,
     append_phase_tree,
@@ -754,7 +754,7 @@ def _separate_dialogue(
         meta["separation_model"] = models_for_task.get("model_id") or cfg.separation_model or REPO_ID_SIDON
         meta["separation_sample_rate"] = sep_sr
         meta["device"] = task.device
-        meta["gpu_id"] = int(task.device.split(":", 1)[1]) if task.device.startswith("cuda:") else None
+        meta["gpu_id"] = cuda_device_index(task.device)
         meta["channels"] = 2
         _write_debug_separation_outputs(task, spk0, spk1, sep_sr, meta["separation_model"])
 

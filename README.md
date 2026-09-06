@@ -24,6 +24,19 @@ Chỉ test các video/playlist trong `configs/youtube_allowlist.json`:
 uv run --with yt-dlp python end2end.py --youtube-only --target_hours 1
 ```
 
+Với `end2end.py --data oto-speech`, mỗi sample lưu ba file để nghe đối chiếu:
+
+```text
+outputs/otospeech_mixtures/<sample key>/mixture.wav
+outputs/otospeech_mixtures/<sample key>/gt_speaker_1.wav
+outputs/otospeech_mixtures/<sample key>/gt_speaker_2.wav
+```
+
+Hai file `gt_speaker_*` là bản sao nguyên gốc từ dataset, giữ nguyên sample rate
+và độ dài. `mixture.wav` dùng `--sample-rate` (mặc định 16000 Hz) và độ dài
+chung của hai nguồn. `--output-root` hoặc `--mixture-root` thay đổi nơi lưu.
+Chạy lại cũng bổ sung hai file gốc khi prediction đã có và được bỏ qua.
+
 2. Chạy 1 sample để debug pipeline:
 
 ```bash

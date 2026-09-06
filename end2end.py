@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 from duplexchat_pipe import benchmark
@@ -42,8 +43,13 @@ def _run_otospeech(cfg, args: argparse.Namespace) -> None:
         )
         mixture_path = mixture_root / key / "mixture.wav"
         save_wav(mixture_path, mixture, sample_rate)
+        for field in ("gt_speaker_1", "gt_speaker_2"):
+            source = Path(sample[field])
+            destination = mixture_path.parent / f"{field}.wav"
+            if not destination.exists() or not source.samefile(destination):
+                shutil.copy2(source, destination)
         prepared.append((sample, mixture_path))
-        print(f"[{idx}/{len(samples)}] mixed {key} -> {mixture_path}", flush=True)
+        print(f"[{idx}/{len(samples)}] mixed {key} -> {mixture_path} (originals: gt_speaker_1.wav, gt_speaker_2.wav)", flush=True)
 
     _phase("3: Running pipeline")
     for idx, (sample, mixture_path) in enumerate(prepared, 1):
