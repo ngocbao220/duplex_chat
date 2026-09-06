@@ -7,6 +7,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from duplexchat_pipe.audio import load_wav_tensor
+from duplexchat_pipe.dialogue import extract_valid_dialogues, split_into_dialogues
 from duplexchat_pipe.diarize import load_diarization_pipeline, run_diarization
 from duplexchat_pipe.outputs import (
     copy_file,
@@ -106,7 +107,7 @@ def run_single_audio(
         )
         pbar.update(1)
 
-    print("========= Phase 3: Running Pipeline: Diarization =========", flush=True)
+    print("========= Phase 2: Running Pipeline: Diarization =========", flush=True)
     diarization_progress = make_chunk_progress(f"{audio_path.stem} / diarization", "chunk")
     try:
         segments = run_diarization(
@@ -126,11 +127,23 @@ def run_single_audio(
         )
         pbar.update(1)
 
-    print(f"Found {len(segments)} diarization segments.")
-    for seg in segments[:5]:
-        print(f"  {seg['speaker']}: {seg['start']:.2f}s - {seg['end']:.2f}s")
-    if len(segments) > 5:
-        print("  ...")
+    print("========= Phase 2.1: Detecting conversations =========", flush=True)
+    conversations = split_into_dialogues(segments, gap_seconds=5.0)
+    valid_dialogues = extract_valid_dialogues(segments, gap_seconds=5.0, min_duration_seconds=10.0)
+    print(f"Conversations by silence gap: {len(conversations)}", flush=True)
+    for index, dialogue in enumerate(conversations, 1):
+        print(
+            f"  conversation_{index:02d}: {dialogue.start:.2f}s -> {dialogue.end:.2f}s "
+            f"({dialogue.duration:.2f}s, speakers={len(dialogue.speakers)})",
+            flush=True,
+        )
+    print(f"DuplexChat-valid dialogues: {len(valid_dialogues)}", flush=True)
+    for index, dialogue in enumerate(valid_dialogues, 1):
+        print(
+            f"  dialogue_{index:02d}: {dialogue.start:.2f}s -> {dialogue.end:.2f}s "
+            f"({dialogue.duration:.2f}s, speakers={','.join(sorted(dialogue.speakers))})",
+            flush=True,
+        )
 
     if str(device).startswith("cuda"):
         release_diarization_gpu_memory(diarize_pipeline)
