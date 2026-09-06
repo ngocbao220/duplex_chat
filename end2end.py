@@ -26,14 +26,12 @@ def main() -> None:
     parser.add_argument("--config", type=Path, default=Path("configs/config.json"))
     parser.add_argument("--target_hours", type=float, default=None)
     parser.add_argument("--youtube-only", action="store_true")
-    parser.add_argument("--pipeline", choices=["cholimex", "duplexchat", "vilier", "all"], default=None)
-    parser.add_argument("--vilier-config", type=Path, default=Path("configs/vilier.json"))
-    parser.add_argument("--duplexchat-config", type=Path, default=Path("configs/duplexchat.json"))
     parser.add_argument("--otospeech-root", type=Path, default=None, help="Use a local dataset without downloading.")
     parser.add_argument("--max-samples", type=int, default=None, help="Bound the number of samples for a smoke run.")
     parser.add_argument("--max-seconds", type=float, default=None, help="Bound each mixture for a real smoke run; originals remain intact.")
     parser.add_argument("--data", choices=["crawl", "oto-speech"], default="crawl")
-    parser.add_argument("--size_gb", type=float, default=10.0)
+    parser.add_argument("--max_gb", type=float, default=10.0, help="Maximum OtoSpeech download size in GB.")
+    parser.add_argument("--debug", action="store_true", help="Persist intermediate per-sample artifacts.")
     parser.add_argument("--output-root", type=Path, default=Path("outputs"))
     parser.add_argument("--pred-root", type=Path, default=None)
     parser.add_argument("--mixture-root", type=Path, default=None)
@@ -46,10 +44,8 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    if args.data != "oto-speech" and args.pipeline is not None:
-        parser.error("--pipeline is currently supported with --data oto-speech only")
-    args.pipeline = args.pipeline or "duplexchat"
-    for name in ("size_gb", "sample_rate", "max_samples", "max_seconds"):
+    args.pipeline = "duplexchat"
+    for name in ("max_gb", "sample_rate", "max_samples", "max_seconds"):
         value = getattr(args, name)
         if value is not None and (not math.isfinite(value) or value <= 0):
             parser.error(f"--{name.replace('_', '-')} must be positive and finite")

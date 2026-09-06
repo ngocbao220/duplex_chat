@@ -49,8 +49,7 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
             str(input_path),
             "--diarize-chunk",
             "90",
-            "--separate-chunk",
-            "90",
+            "--separate-chunk", "90", "--debug", "--runtime-device", "cpu",
         ],
     )
 
@@ -61,8 +60,10 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
     assert calls[0][1]["diarize_chunk"] == 90
     assert calls[0][1]["separate_chunk"] == 90
     run_manifest = json.loads((tmp_path / "outputs" / "demo1" / "run.json").read_text())
-    assert run_manifest["speaker_A"] == str(Path("outputs") / "demo1" / "speaker_A.wav")
-    assert run_manifest["speaker_B"] == str(Path("outputs") / "demo1" / "speaker_B.wav")
+    assert run_manifest["speakerA"] == str(Path("outputs") / "demo1" / "speakerA.wav")
+    assert run_manifest["speakerB"] == str(Path("outputs") / "demo1" / "speakerB.wav")
+    assert run_manifest["debug"] is True
+    assert run_manifest["device"]["resolved"] == "cpu"
     assert run_manifest["labels"]["vad"] == str(Path("outputs") / "demo1" / "vad.txt")
     assert run_manifest["labels"]["diarization"] == str(Path("outputs") / "demo1" / "diarization.txt")
     assert run_manifest["labels"]["separation"] == str(Path("outputs") / "demo1" / "separation.txt")
@@ -75,8 +76,6 @@ def test_single_wrapper_defaults_output_dir_to_input_name(monkeypatch, tmp_path:
         "0.000\t1.000\tspeaker_A\n"
         "0.000\t1.000\tspeaker_B\n"
     )
-    assert not (tmp_path / "outputs" / "demo1" / "phase_00_input").exists()
-    assert not (tmp_path / "outputs" / "demo1" / "phase_02_diarization").exists()
-    assert not (tmp_path / "outputs" / "demo1" / "phase_04_separation").exists()
-    assert "speakerA" not in run_manifest
-    assert "speakerB" not in run_manifest
+    assert (tmp_path / "outputs" / "demo1" / "debug" / "phase_00_input").exists()
+    assert (tmp_path / "outputs" / "demo1" / "debug" / "phase_02_diarization").exists()
+    assert (tmp_path / "outputs" / "demo1" / "debug" / "phase_04_separation").exists()

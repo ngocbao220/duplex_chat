@@ -78,8 +78,8 @@ def test_end2end_otospeech_defaults_to_duplexchat_on_duplex_chat_branch(monkeypa
     import pytest
     seen = {}
     monkeypatch.setattr(end2end, "load_config", lambda path: Config())
-    monkeypatch.setattr(end2end, "_run_otospeech", lambda cfg, args: seen.update(pipeline=args.pipeline, size=args.size_gb) or 0)
-    monkeypatch.setattr("sys.argv", ["end2end.py", "--data", "oto-speech", "--size_gb", "1"])
+    monkeypatch.setattr(end2end, "_run_otospeech", lambda cfg, args: seen.update(pipeline=args.pipeline, size=args.max_gb) or 0)
+    monkeypatch.setattr("sys.argv", ["end2end.py", "--data", "oto-speech", "--max_gb", "1"])
     with pytest.raises(SystemExit) as result:
         end2end.main()
     assert result.value.code == 0

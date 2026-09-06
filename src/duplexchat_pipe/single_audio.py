@@ -68,7 +68,7 @@ def run_single_audio(
     if not audio_path.exists():
         raise FileNotFoundError(audio_path)
 
-    print(f"--- Processing {audio_path.name} ---")
+    print(f"========= Phase 1: Preparing input ({audio_path.name}) =========", flush=True)
     print(f"Config: Diarize Chunk={diarize_chunk}s, Separate Chunk={separate_chunk}s")
     print(f"Diarization: backend={diarization_backend}, model={diarization_model}")
     print(f"Separation: backend={separation_backend}, model={separation_model or 'default'}")
@@ -82,7 +82,7 @@ def run_single_audio(
 
     temp_wav = phase_output_dir / "phase_01_preprocess" / "audio_16k_mono.wav"
     temp_wav.parent.mkdir(parents=True, exist_ok=True)
-    with tqdm(total=2, desc="preprocess", unit="step", leave=False) as pbar:
+    with tqdm(total=2, desc=f"{audio_path.stem} / preprocess", unit="step", leave=False) as pbar:
         subprocess.run([
             "ffmpeg", "-y", "-i", str(audio_path),
             "-ar", "16000", "-ac", "1", str(temp_wav)
@@ -91,7 +91,8 @@ def run_single_audio(
         # The standardized input is already persisted in the phase directory.
         pbar.update(1)
 
-    with tqdm(total=2, desc="load models", unit="model", leave=False) as pbar:
+    print("========= Phase 2: Loading models =========", flush=True)
+    with tqdm(total=2, desc=f"{audio_path.stem} / load models", unit="model", leave=False) as pbar:
         diarize_pipeline = load_diarization_pipeline(
             diarization_model,
             device=device,
@@ -105,7 +106,8 @@ def run_single_audio(
         )
         pbar.update(1)
 
-    diarization_progress = make_chunk_progress("diarization", "chunk")
+    print("========= Phase 3: Running Pipeline: Diarization =========", flush=True)
+    diarization_progress = make_chunk_progress(f"{audio_path.stem} / diarization", "chunk")
     try:
         segments = run_diarization(
             diarize_pipeline,
@@ -135,7 +137,8 @@ def run_single_audio(
 
     wav, sr = load_wav_tensor(temp_wav)
     overlap = max(1.0, separate_chunk / 6.0)
-    separation_progress = make_chunk_progress("separation", "chunk")
+    print("========= Phase 4: Running Pipeline: Separation =========", flush=True)
+    separation_progress = make_chunk_progress(f"{audio_path.stem} / separation", "chunk")
     try:
         spk0, spk1, out_sr = run_separation(
             wav,
@@ -149,11 +152,12 @@ def run_single_audio(
     finally:
         separation_progress("close", 0)
 
-    with tqdm(total=5, desc="save outputs", unit="file", leave=False) as pbar:
+    print("========= Phase 5: Writing outputs =========", flush=True)
+    with tqdm(total=5, desc=f"{audio_path.stem} / save outputs", unit="file", leave=False) as pbar:
         output_path = Path(output_prefix)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        out_A = f"{output_prefix}_A.wav"
-        out_B = f"{output_prefix}_B.wav"
+        out_A = str(output_path.parent / f"{output_path.name}A.wav")
+        out_B = str(output_path.parent / f"{output_path.name}B.wav")
         save_wav(Path(out_A), spk0, out_sr)
         pbar.update(1)
         save_wav(Path(out_B), spk1, out_sr)

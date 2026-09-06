@@ -46,7 +46,7 @@ def safe_key(key):
 def prepare_samples(args, benchmark, save_wav):
     phase('1: Downloading OtoSpeech')
     local_dir = args.otospeech_root or benchmark.download_otospeech_dataset(
-        repo_id=args.otospeech_repo, local_dir=args.otospeech_local_dir, max_download_gb=args.size_gb)
+        repo_id=args.otospeech_repo, local_dir=args.otospeech_local_dir, max_download_gb=args.max_gb)
     samples = benchmark.discover_otospeech_samples(local_dir)
     if args.max_samples:
         samples = samples[:args.max_samples]

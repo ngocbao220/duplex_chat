@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import torchaudio
 from duplexchat_pipe.outputs import write_label_file
 from duplexchat_pipe.runtime_warnings import suppress_pyannote_tf32_warning
 from duplexchat_pipe.single_audio import run_single_audio
+from duplexchat_pipe.devices import resolve_device
 
 
 DEFAULT_DIARIZATION_BACKEND = "auto"
@@ -107,9 +109,13 @@ def main() -> None:
     parser.add_argument("--diarization-model", default=DEFAULT_DIARIZATION_MODEL)
     parser.add_argument("--separation-backend", default=DEFAULT_SEPARATION_BACKEND)
     parser.add_argument("--separation-model", default=DEFAULT_SEPARATION_MODEL)
+    parser.add_argument("--runtime-device", default="auto", help="Device policy: auto, cpu, cuda, or cuda:N.")
+    parser.add_argument("--debug", action="store_true", help="Persist intermediate phase artifacts under output/debug.")
     args = parser.parse_args()
 
     input_path = Path(args.input)
+    if not input_path.is_file():
+        parser.error(f"input audio file does not exist: {input_path}")
     output_dir = args.output_dir or Path("outputs") / input_path.stem
     output_dir.mkdir(parents=True, exist_ok=True)
     output_prefix = output_dir / "speaker"
@@ -126,16 +132,29 @@ def main() -> None:
             separation_model=args.separation_model,
             output_prefix=str(output_prefix),
             output_dir=str(temp_output_dir),
+            runtime_device=args.runtime_device,
         )
 
-        speaker_a = output_dir / "speaker_A.wav"
-        speaker_b = output_dir / "speaker_B.wav"
+        speaker_a = output_dir / "speakerA.wav"
+        speaker_b = output_dir / "speakerB.wav"
         label_files = _write_single_label_files(temp_output_dir, output_dir, speaker_a, speaker_b)
+        debug_dir = output_dir / "debug"
+        if args.debug:
+            if debug_dir.exists():
+                shutil.rmtree(debug_dir)
+            shutil.copytree(temp_output_dir, debug_dir)
         run_manifest = {
             "input": args.input,
             "output_dir": str(output_dir),
-            "speaker_A": str(speaker_a),
-            "speaker_B": str(speaker_b),
+            "speakerA": str(speaker_a),
+            "speakerB": str(speaker_b),
+            "debug": bool(args.debug),
+            "debug_dir": str(debug_dir) if args.debug else None,
+            "debug_artifacts": [str(path.relative_to(output_dir)) for path in sorted(debug_dir.rglob("*")) if path.is_file()] if args.debug else [],
+            "device": {
+                "requested": args.runtime_device,
+                "resolved": resolve_device(args.runtime_device, allow_cpu_fallback=True),
+            },
             "labels": label_files,
             "models": {
                 "diarization": {
