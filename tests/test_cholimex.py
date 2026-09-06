@@ -45,7 +45,7 @@ def test_cholimex_config_overrides():
 def test_cholimex_extra_installs_speechbrain():
     pyproject = tomllib.loads(Path("pyproject.toml").read_text())
 
-    assert "speechbrain" in pyproject["project"]["optional-dependencies"]["cholimex"]
+    assert "speechbrain>=1.0,<2.0" in pyproject["project"]["optional-dependencies"]["cholimex"]
 
 
 def test_cholimex_cli_dispatches_single_audio_runner(monkeypatch, tmp_path: Path):
@@ -139,6 +139,35 @@ def test_cholimex_rejects_missing_input_before_transcode(monkeypatch, tmp_path: 
         assert str(missing_input) in str(exc)
     else:
         raise AssertionError("missing input should raise FileNotFoundError")
+
+
+def test_cholimex_passes_progress_callback_to_proposal_separation(monkeypatch, tmp_path: Path):
+    input_path = tmp_path / "input.wav"
+    input_path.write_bytes(b"fake")
+    progress_events = []
+
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.audio.ensure_ffmpeg", lambda: None)
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.audio.transcode_to_wav_16k_mono", lambda src, dst: dst.touch() or dst)
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.audio.load_wav_tensor", lambda path: (torch.ones(1, 160), 16000))
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.resolve_device", lambda device, fallback: "cpu")
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.separate.load_separation_models", lambda *args: {"backend": "dialoguesidon", "sample_rate": 16000, "device": "cpu"})
+
+    def fake_run_separation(wav, sample_rate, num_steps, models, progress_callback=None):
+        assert progress_callback is not None
+        progress_callback("start", 1)
+        progress_callback("advance", 1)
+        progress_callback("close", 0)
+        progress_events.extend(["start", "advance", "close"])
+        return torch.ones(1, wav.shape[-1]), torch.zeros(1, wav.shape[-1]), sample_rate
+
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.separate.run_separation", fake_run_separation)
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.run_silero_vad", lambda *args, **kwargs: [])
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.write_vad_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr("duplexchat_pipe.cholimex.pipeline.classify_regions", lambda *args, **kwargs: [])
+
+    run_cholimex_file(input_path, tmp_path / "out", Config())
+
+    assert progress_events == ["start", "advance", "close"]
 
 
 def test_cholimex_speaker_embedding_reports_missing_speechbrain(monkeypatch):

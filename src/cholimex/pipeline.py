@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 import torchaudio.functional as F_audio
+from tqdm import tqdm
 
 from duplexchat_pipe import audio, outputs, separate
 from duplexchat_pipe.config import Config
@@ -18,6 +19,22 @@ from .vad_masking import run_silero_vad, write_vad_artifacts
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _make_progress(desc: str, unit: str = "chunk"):
+    pbar = None
+
+    def _callback(event: str, value: int) -> None:
+        nonlocal pbar
+        if event == "start":
+            pbar = tqdm(total=value, desc=desc, unit=unit, leave=False)
+        elif event == "advance" and pbar is not None:
+            pbar.update(value)
+        elif event == "close" and pbar is not None:
+            pbar.close()
+            pbar = None
+
+    return _callback
 
 
 def run_cholimex_file(input_path: Path, output_dir: Path, cfg: Config) -> dict:
@@ -47,6 +64,7 @@ def run_cholimex_file(input_path: Path, output_dir: Path, cfg: Config) -> dict:
         sample_rate,
         cfg.separation_num_steps,
         proposal_models,
+        progress_callback=_make_progress(f"cholimex proposal {input_path.stem}"),
     )
     sidon_0 = _align_proposal_track(sidon_0, sidon_sr, sample_rate, original.shape[-1], "sidon_track_0")
     sidon_1 = _align_proposal_track(sidon_1, sidon_sr, sample_rate, original.shape[-1], "sidon_track_1")
@@ -120,6 +138,7 @@ def run_cholimex_file(input_path: Path, output_dir: Path, cfg: Config) -> dict:
             sr,
             cfg.separation_num_steps,
             overlap_models,
+            progress_callback=_make_progress(f"cholimex overlap {input_path.stem}"),
         )
 
     LOGGER.info("Cholimex stage 5: reconstruction")
